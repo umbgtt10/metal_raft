@@ -328,7 +328,32 @@ fn test_safety_reject_stale_vote_request() {
         _ => panic!("Expected RequestVoteResponse"),
     }
 }
+#[test]
+fn test_handle_pre_vote_request_log_not_up_to_date() {
+    let timer_service = raft_test_utils::frozen_timer::FrozenTimer;
+    let mut manager = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(timer_service);
 
+    let mut storage = raft_test_utils::in_memory_storage::InMemoryStorage::new();
+    storage.append_entries(&[raft_core::log_entry::LogEntry {
+        entry_type: raft_core::log_entry::EntryType::Command("cmd".to_string()),
+        term: 2,
+    }]);
+
+    let msg = manager.handle_pre_vote_request::<
+        String,
+        raft_test_utils::in_memory_log_entry_collection::InMemoryLogEntryCollection,
+        raft_test_utils::in_memory_chunk_collection::InMemoryChunkCollection,
+        raft_test_utils::in_memory_storage::InMemoryStorage,
+    >(1, 2, 1, 1, 1, &storage);
+
+    match msg {
+        raft_core::raft_messages::RaftMsg::PreVoteResponse { term, vote_granted } => {
+            assert_eq!(term, 1);
+            assert!(!vote_granted); // Log not up to date: candidate has term 1, index 1; we have term 2, index 1
+        }
+        _ => panic!("Expected PreVoteResponse"),
+    }
+}
 // ============================================================
 // handle_vote_response tests
 // ============================================================

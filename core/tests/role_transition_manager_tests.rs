@@ -3,7 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use raft_core::{
-    collections::node_collection::NodeCollection,
+    collections::{map_collection::MapCollection, node_collection::NodeCollection},
     components::{
         election_manager::ElectionManager, log_replication_manager::LogReplicationManager,
         role_transition_manager::RoleTransitionManager,
@@ -20,10 +20,6 @@ use raft_test_utils::{
     in_memory_node_collection::InMemoryNodeCollection, in_memory_storage::InMemoryStorage,
     null_observer::NullObserver,
 };
-
-// ============================================================
-// node_state_to_role tests
-// ============================================================
 
 #[test]
 fn test_node_state_to_role_follower() {
@@ -300,4 +296,44 @@ fn test_step_down_from_candidate() {
     assert_eq!(current_term, new_term);
     assert_eq!(storage.current_term(), new_term);
     assert_eq!(storage.voted_for(), None);
+}
+
+#[test]
+fn test_become_leader_initializes_replication() {
+    let node_id = 1;
+    let current_term = 1;
+    let mut role = NodeState::Candidate;
+    let storage = InMemoryStorage::new();
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut observer = NullObserver::new();
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+
+    RoleTransitionManager::become_leader::<
+        String,
+        InMemoryLogEntryCollection,
+        InMemoryChunkCollection,
+        InMemoryNodeCollection,
+        InMemoryMapCollection,
+        FrozenTimer,
+        NullObserver<String, InMemoryLogEntryCollection>,
+        InMemoryStorage,
+    >(
+        node_id,
+        current_term,
+        &mut role,
+        &storage,
+        members.iter(),
+        &mut election,
+        &mut replication,
+        &mut observer,
+        Role::Candidate,
+    );
+
+    assert_eq!(role, NodeState::Leader);
+    // Check that replication is initialized for followers
+    assert!(replication.next_index().get(2).is_some());
+    assert!(replication.match_index().get(2).is_some());
 }

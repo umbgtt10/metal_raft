@@ -1809,3 +1809,23 @@ fn test_liveness_leader_updates_next_index_after_snapshot_success() {
         _ => panic!("Should send AppendEntries after snapshot success"),
     }
 }
+
+#[test]
+fn test_heartbeat_message() {
+    let mut manager = LogReplicationManager::<InMemoryMapCollection>::new();
+    manager.next_index_mut().insert(2, 1);
+    manager.match_index_mut().insert(2, 0);
+
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(1);
+
+    let msg = manager
+        .get_append_entries_for_peer::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(2, 1, &storage);
+
+    match msg {
+        RaftMsg::AppendEntries { entries, .. } => {
+            assert!(entries.is_empty()); // Heartbeat has no entries
+        }
+        _ => panic!("Expected AppendEntries"),
+    }
+}

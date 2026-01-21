@@ -3,13 +3,22 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use raft_core::{
-    collections::{configuration::Configuration, node_collection::NodeCollection},
-    components::config_change_manager::{ConfigChangeManager, ConfigError},
+    collections::{
+        config_change_collection::ConfigChangeCollection, configuration::Configuration,
+        map_collection::MapCollection, node_collection::NodeCollection,
+    },
+    components::{
+        config_change_manager::{ConfigChangeManager, ConfigError},
+        log_replication_manager::LogReplicationManager,
+    },
     log_entry::ConfigurationChange,
+    node_state::NodeState,
 };
 use raft_test_utils::{
+    in_memory_config_change_collection::InMemoryConfigChangeCollection,
+    in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_map_collection::InMemoryMapCollection,
-    in_memory_node_collection::InMemoryNodeCollection,
+    in_memory_node_collection::InMemoryNodeCollection, null_observer::NullObserver,
 };
 
 fn make_test_config(nodes: &[u64]) -> Configuration<InMemoryNodeCollection> {
@@ -19,10 +28,6 @@ fn make_test_config(nodes: &[u64]) -> Configuration<InMemoryNodeCollection> {
     }
     Configuration::new(members)
 }
-
-// ============================================================================
-// Construction and Basic Getters
-// ============================================================================
 
 #[test]
 fn test_new_manager() {
@@ -390,4 +395,91 @@ fn test_config_manager_workflow() {
     // 4. After commit, another change succeeds
     let change2 = manager.remove_server(2, 1, true, 10).unwrap();
     assert_eq!(change2, ConfigurationChange::RemoveServer(2));
+}
+
+#[test]
+fn test_apply_changes_add_server() {
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    let config = Configuration::new(members);
+    let mut manager =
+        ConfigChangeManager::<InMemoryNodeCollection, InMemoryMapCollection>::new(config);
+
+    let mut changes = InMemoryConfigChangeCollection::new();
+    let _ = changes.push(1, ConfigurationChange::AddServer(2));
+
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
+    let mut current_role = NodeState::Leader;
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    manager.apply_changes(
+        changes,
+        1,
+        5,
+        &mut replication,
+        &mut observer,
+        &mut current_role,
+    );
+
+    assert!(manager.config().contains(2));
+    assert_eq!(replication.next_index().get(2), Some(6));
+    assert_eq!(replication.match_index().get(2), Some(0));
+}
+
+#[test]
+fn test_apply_changes_remove_server() {
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut manager =
+        ConfigChangeManager::<InMemoryNodeCollection, InMemoryMapCollection>::new(config);
+
+    let mut changes = InMemoryConfigChangeCollection::new();
+    let _ = changes.push(1, ConfigurationChange::RemoveServer(2));
+
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
+    let mut current_role = NodeState::Leader;
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    manager.apply_changes(
+        changes,
+        1,
+        5,
+        &mut replication,
+        &mut observer,
+        &mut current_role,
+    );
+
+    assert!(!manager.config().contains(2));
+    assert!(replication.next_index().get(2).is_none());
+}
+
+#[test]
+fn test_apply_changes_remove_self() {
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut manager =
+        ConfigChangeManager::<InMemoryNodeCollection, InMemoryMapCollection>::new(config);
+
+    let mut changes = InMemoryConfigChangeCollection::new();
+    let _ = changes.push(1, ConfigurationChange::RemoveServer(1));
+
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
+    let mut current_role = NodeState::Leader;
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    manager.apply_changes(
+        changes,
+        1,
+        5,
+        &mut replication,
+        &mut observer,
+        &mut current_role,
+    );
+
+    assert!(!manager.config().contains(1));
+    assert_eq!(current_role, NodeState::Follower);
 }

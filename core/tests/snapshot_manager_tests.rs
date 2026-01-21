@@ -13,10 +13,6 @@ use raft_test_utils::{
     in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
 };
 
-// ============================================================================
-// Construction and Basic Getters
-// ============================================================================
-
 #[test]
 fn test_new_manager() {
     let manager = SnapshotManager::new(100);
@@ -28,10 +24,6 @@ fn test_threshold_getter() {
     let manager = SnapshotManager::new(50);
     assert_eq!(manager.threshold(), 50);
 }
-
-// ============================================================================
-// should_create Tests
-// ============================================================================
 
 #[test]
 fn test_should_create_below_threshold() {
@@ -133,10 +125,6 @@ fn test_should_create_zero_commit_index() {
     // Zero commit index should not trigger snapshot
     assert!(!manager.should_create(0, &storage));
 }
-
-// ============================================================================
-// create Tests
-// ============================================================================
 
 #[test]
 fn test_create_snapshot_success() {
@@ -263,10 +251,6 @@ fn test_create_snapshot_preserves_state_machine() {
     assert_eq!(restored_state_machine.get("key2"), Some("value2"));
 }
 
-// ============================================================================
-// compact Tests
-// ============================================================================
-
 #[test]
 fn test_compact_removes_entries_before_index() {
     let manager = SnapshotManager::new(100);
@@ -334,10 +318,6 @@ fn test_compact_empty_log() {
     assert_eq!(storage.first_log_index(), 11);
     assert_eq!(storage.last_log_index(), 10);
 }
-
-// ============================================================================
-// Integration-like Workflow Tests
-// ============================================================================
 
 #[test]
 fn test_snapshot_workflow() {

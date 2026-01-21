@@ -8,7 +8,7 @@
 //! independently of RaftNode through MessageHandlerContext.
 
 use raft_core::{
-    collections::configuration::Configuration,
+    collections::{configuration::Configuration, log_entry_collection::LogEntryCollection},
     components::{
         config_change_manager::ConfigChangeManager,
         election_manager::ElectionManager,
@@ -18,6 +18,7 @@ use raft_core::{
     },
     log_entry::ConfigurationChange,
     node_state::NodeState,
+    raft_messages::RaftMsg,
     storage::Storage,
     timer_service::TimerKind,
 };
@@ -375,4 +376,49 @@ fn test_message_handler_submit_config_change_as_follower_fails() {
 
     let result = handler.submit_config_change(&mut ctx, ConfigurationChange::AddServer(4));
     assert_eq!(result, Err(ClientError::NotLeader));
+}
+
+#[test]
+fn test_message_handler_handles_higher_term_message() {
+    let node_id = 1;
+    let mut role = NodeState::Follower;
+    let mut current_term = 1;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(1);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    let msg = RaftMsg::AppendEntries {
+        term: 2, // Higher term
+        prev_log_index: 0,
+        prev_log_term: 0,
+        entries: InMemoryLogEntryCollection::new(&[]),
+        leader_commit: 0,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    assert_eq!(current_term, 2); // Term updated
+    assert_eq!(role, NodeState::Follower); // Became follower
 }
