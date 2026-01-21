@@ -6,6 +6,7 @@ use raft_core::{
     event::Event, node_state::NodeState, state_machine::StateMachine, storage::Storage,
     timer_service::TimerKind,
 };
+use raft_test_utils::in_memory_state_machine::InMemoryStateMachine;
 use raft_sim::timeless_test_cluster::TimelessTestCluster;
 
 #[test]
@@ -55,7 +56,7 @@ fn test_leader_creates_snapshot_after_threshold() {
 
     // Assert: State machine state is captured in snapshot
     // (We can verify this by restoring to a new state machine)
-    let mut test_sm = raft_sim::in_memory_state_machine::InMemoryStateMachine::new();
+    let mut test_sm = InMemoryStateMachine::new();
     let restore_result = test_sm.restore_from_snapshot(&snapshot.data);
     assert!(restore_result.is_ok(), "Snapshot should be restorable");
 
@@ -155,7 +156,7 @@ fn test_leader_automatically_compacts_log_at_threshold() {
     }
 
     // Assert: Snapshot data contains first 10 entries
-    let mut test_sm = raft_sim::in_memory_state_machine::InMemoryStateMachine::new();
+    let mut test_sm = InMemoryStateMachine::new();
     let restore_result = test_sm.restore_from_snapshot(&snapshot.data);
     assert!(restore_result.is_ok(), "Snapshot should be restorable");
 

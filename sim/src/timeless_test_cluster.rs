@@ -2,16 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::{
-    in_memory_chunk_collection::InMemoryChunkCollection,
-    in_memory_config_change_collection::InMemoryConfigChangeCollection,
-    in_memory_log_entry_collection::InMemoryLogEntryCollection,
-    in_memory_map_collection::InMemoryMapCollection,
-    in_memory_node_collection::InMemoryNodeCollection,
-    in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
-    in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
-    no_action_timer::DummyTimer, null_observer::NullObserver,
-};
 use indexmap::IndexMap;
 use raft_core::{
     collections::node_collection::NodeCollection,
@@ -22,6 +12,16 @@ use raft_core::{
     raft_node::RaftNode,
     raft_node_builder::RaftNodeBuilder,
     types::NodeId,
+};
+use raft_test_utils::{
+    frozen_timer::FrozenTimer, in_memory_chunk_collection::InMemoryChunkCollection,
+    in_memory_config_change_collection::InMemoryConfigChangeCollection,
+    in_memory_log_entry_collection::InMemoryLogEntryCollection,
+    in_memory_map_collection::InMemoryMapCollection,
+    in_memory_node_collection::InMemoryNodeCollection,
+    in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
+    in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
+    null_observer::NullObserver,
 };
 use std::sync::{Arc, Mutex};
 
@@ -34,7 +34,7 @@ pub type TestNode = RaftNode<
     InMemoryLogEntryCollection,
     InMemoryChunkCollection,
     InMemoryMapCollection,
-    DummyTimer,
+    FrozenTimer,
     NullObserver<String, InMemoryLogEntryCollection>,
     InMemoryConfigChangeCollection,
 >;
@@ -92,7 +92,7 @@ impl TimelessTestCluster {
 
         let node = RaftNodeBuilder::new(id, storage, InMemoryStateMachine::new())
             .with_snapshot_threshold(self.snapshot_threshold)
-            .with_election(ElectionManager::new(DummyTimer))
+            .with_election(ElectionManager::new(FrozenTimer))
             .with_replication(LogReplicationManager::new())
             .with_transport(
                 transport,
@@ -149,7 +149,7 @@ impl TimelessTestCluster {
             // Re-create the node with updated peers
             let new_node = RaftNodeBuilder::new(node_id, storage, state_machine)
                 .with_snapshot_threshold(self.snapshot_threshold)
-                .with_election(ElectionManager::new(DummyTimer))
+                .with_election(ElectionManager::new(FrozenTimer))
                 .with_replication(LogReplicationManager::new())
                 .with_transport(transport, expected_peers, NullObserver::new());
 

@@ -5,9 +5,9 @@
 use raft_core::timer_service::{ExpiredTimers, TimerService};
 
 /// Dummy timer for deterministic testing (no real timers)
-pub struct DummyTimer;
+pub struct FrozenTimer;
 
-impl TimerService for DummyTimer {
+impl TimerService for FrozenTimer {
     fn reset_election_timer(&mut self) {
         // No-op in tests - timers fired manually
     }

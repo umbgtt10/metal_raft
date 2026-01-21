@@ -642,6 +642,9 @@ checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
 [[package]]
 name = "raft-core"
 version = "0.1.0"
+dependencies = [
+ "raft-test-utils",
+]
 
 [[package]]
 name = "raft-embassy-sim"
@@ -670,6 +673,17 @@ dependencies = [
 
 [[package]]
 name = "raft-sim"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "raft-core",
+ "raft-test-utils",
+ "rand",
+ "serde_json",
+]
+
+[[package]]
+name = "raft-test-utils"
 version = "0.1.0"
 dependencies = [
  "indexmap",

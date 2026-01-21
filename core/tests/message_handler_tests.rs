@@ -8,23 +8,28 @@
 //! independently of RaftNode through MessageHandlerContext.
 
 use raft_core::{
-    collections::configuration::Configuration, components::{
+    collections::configuration::Configuration,
+    components::{
         config_change_manager::ConfigChangeManager,
         election_manager::ElectionManager,
         log_replication_manager::LogReplicationManager,
         message_handler::{ClientError, MessageHandler, MessageHandlerContext},
         snapshot_manager::SnapshotManager,
-    }, log_entry::ConfigurationChange, node_state::NodeState, storage::Storage, timer_service::TimerKind
+    },
+    log_entry::ConfigurationChange,
+    node_state::NodeState,
+    storage::Storage,
+    timer_service::TimerKind,
 };
-use raft_sim::{
-    in_memory_chunk_collection::InMemoryChunkCollection,
+use raft_test_utils::{
+    frozen_timer::FrozenTimer, in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_config_change_collection::InMemoryConfigChangeCollection,
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_map_collection::InMemoryMapCollection,
     in_memory_node_collection::InMemoryNodeCollection,
     in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
     in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
-    no_action_timer::DummyTimer, null_observer::NullObserver,
+    null_observer::NullObserver,
 };
 use std::sync::{Arc, Mutex};
 
@@ -41,7 +46,7 @@ type TestHandler = MessageHandler<
     InMemoryLogEntryCollection,
     InMemoryChunkCollection,
     InMemoryMapCollection,
-    DummyTimer,
+    FrozenTimer,
     NullObserver<String, InMemoryLogEntryCollection>,
     InMemoryConfigChangeCollection,
 >;
@@ -60,7 +65,7 @@ fn create_context<'a>(
     storage: &'a mut InMemoryStorage,
     state_machine: &'a mut InMemoryStateMachine,
     observer: &'a mut NullObserver<String, InMemoryLogEntryCollection>,
-    election: &'a mut ElectionManager<InMemoryNodeCollection, DummyTimer>,
+    election: &'a mut ElectionManager<InMemoryNodeCollection, FrozenTimer>,
     replication: &'a mut LogReplicationManager<InMemoryMapCollection>,
     config_manager: &'a mut ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection>,
     snapshot_manager: &'a mut SnapshotManager,
@@ -74,7 +79,7 @@ fn create_context<'a>(
     InMemoryLogEntryCollection,
     InMemoryChunkCollection,
     InMemoryMapCollection,
-    DummyTimer,
+    FrozenTimer,
     NullObserver<String, InMemoryLogEntryCollection>,
     InMemoryConfigChangeCollection,
 > {
@@ -104,7 +109,7 @@ fn test_message_handler_start_election() {
     let mut storage = InMemoryStorage::new();
     let mut state_machine = InMemoryStateMachine::new();
     let mut observer = NullObserver::new();
-    let mut election = ElectionManager::new(DummyTimer);
+    let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
     let mut config_manager = ConfigChangeManager::new(make_empty_config());
     let mut snapshot_manager = SnapshotManager::new(1000);
@@ -144,7 +149,7 @@ fn test_message_handler_start_pre_vote() {
     let mut storage = InMemoryStorage::new();
     let mut state_machine = InMemoryStateMachine::new();
     let mut observer = NullObserver::new();
-    let mut election = ElectionManager::new(DummyTimer);
+    let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
     let mut config_manager = ConfigChangeManager::new(make_empty_config());
     let mut snapshot_manager = SnapshotManager::new(1000);
@@ -184,7 +189,7 @@ fn test_message_handler_reuse_across_operations() {
     let mut storage = InMemoryStorage::new();
     let mut state_machine = InMemoryStateMachine::new();
     let mut observer = NullObserver::new();
-    let mut election = ElectionManager::new(DummyTimer);
+    let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
     let mut config_manager = ConfigChangeManager::new(make_empty_config());
     let mut snapshot_manager = SnapshotManager::new(1000);
@@ -237,7 +242,7 @@ fn test_message_handler_handle_election_timer_as_follower() {
     let mut storage = InMemoryStorage::new();
     let mut state_machine = InMemoryStateMachine::new();
     let mut observer = NullObserver::new();
-    let mut election = ElectionManager::new(DummyTimer);
+    let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
     let mut config_manager = ConfigChangeManager::new(make_empty_config());
     let mut snapshot_manager = SnapshotManager::new(1000);
@@ -277,7 +282,7 @@ fn test_message_handler_handle_election_timer_as_leader() {
     let mut storage = InMemoryStorage::new();
     let mut state_machine = InMemoryStateMachine::new();
     let mut observer = NullObserver::new();
-    let mut election = ElectionManager::new(DummyTimer);
+    let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
     let mut config_manager = ConfigChangeManager::new(make_empty_config());
     let mut snapshot_manager = SnapshotManager::new(1000);
@@ -314,7 +319,7 @@ fn test_message_handler_submit_client_command_as_follower_fails() {
     let mut storage = InMemoryStorage::new();
     let mut state_machine = InMemoryStateMachine::new();
     let mut observer = NullObserver::new();
-    let mut election = ElectionManager::new(DummyTimer);
+    let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
     let mut config_manager = ConfigChangeManager::new(make_empty_config());
     let mut snapshot_manager = SnapshotManager::new(1000);
@@ -348,7 +353,7 @@ fn test_message_handler_submit_config_change_as_follower_fails() {
     let mut storage = InMemoryStorage::new();
     let mut state_machine = InMemoryStateMachine::new();
     let mut observer = NullObserver::new();
-    let mut election = ElectionManager::new(DummyTimer);
+    let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
     let mut config_manager = ConfigChangeManager::new(make_empty_config());
     let mut snapshot_manager = SnapshotManager::new(1000);

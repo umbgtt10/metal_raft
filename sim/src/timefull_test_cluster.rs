@@ -2,17 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::mocked_timer_service::{MockClock, MockTimerService};
-use crate::null_observer::NullObserver;
-use crate::{
-    in_memory_chunk_collection::InMemoryChunkCollection,
-    in_memory_config_change_collection::InMemoryConfigChangeCollection,
-    in_memory_log_entry_collection::InMemoryLogEntryCollection,
-    in_memory_map_collection::InMemoryMapCollection,
-    in_memory_node_collection::InMemoryNodeCollection,
-    in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
-    in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
-};
 use indexmap::IndexMap;
 use raft_core::timer_service::TimerService;
 use raft_core::{
@@ -25,6 +14,17 @@ use raft_core::{
     raft_node::RaftNode,
     raft_node_builder::RaftNodeBuilder,
     types::NodeId,
+};
+use raft_test_utils::{
+    in_memory_chunk_collection::InMemoryChunkCollection,
+    in_memory_config_change_collection::InMemoryConfigChangeCollection,
+    in_memory_log_entry_collection::InMemoryLogEntryCollection,
+    in_memory_map_collection::InMemoryMapCollection,
+    in_memory_node_collection::InMemoryNodeCollection,
+    in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
+    in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
+    mocked_timer_service::MockClock, mocked_timer_service::MockTimerService,
+    null_observer::NullObserver,
 };
 use std::sync::{Arc, Mutex};
 type InMemoryTimefullRaftNode = RaftNode<

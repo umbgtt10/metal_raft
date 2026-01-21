@@ -6,7 +6,8 @@ use raft_core::{
     event::Event, node_state::NodeState, state_machine::StateMachine, storage::Storage,
     timer_service::TimerKind,
 };
-use raft_sim::{in_memory_storage::InMemoryStorage, timeless_test_cluster::TimelessTestCluster};
+use raft_sim::timeless_test_cluster::TimelessTestCluster;
+use raft_test_utils::in_memory_storage::InMemoryStorage;
 
 #[test]
 fn test_liveness_follower_far_behind() {

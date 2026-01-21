@@ -4,6 +4,7 @@ members = [
     "core",
     "sim",
     "embassy-sim",
+    "test-utils",
 ]
 
 [workspace.dependencies]
@@ -25,3 +26,4 @@ tonic-prost-build = "0.14.2"
 
 raft-core = { path = "core" }
 raft-sim = { path = "sim" }
+raft-test-utils = { path = "test-utils" }

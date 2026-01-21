@@ -1,11 +1,10 @@
 [package]
-name = "raft-sim"
+name = "raft-test-utils"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 raft-core = { path = "../core" }
-raft-test-utils = { path = "../test-utils" }
 indexmap.workspace = true
 rand.workspace = true
 serde_json.workspace = true

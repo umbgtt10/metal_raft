@@ -11,6 +11,8 @@ use raft_core::{
     types::{LogIndex, NodeId, Term},
 };
 
+use crate::in_memory_chunk_collection::InMemoryChunkCollection;
+
 /// Null observer that does nothing (zero-cost default for tests)
 pub struct NullObserver<P, L>
 where
@@ -39,7 +41,7 @@ where
 {
     type Payload = P;
     type LogEntries = L;
-    type ChunkCollection = crate::in_memory_chunk_collection::InMemoryChunkCollection;
+    type ChunkCollection = InMemoryChunkCollection;
 
     #[inline]
     fn min_level(&self) -> EventLevel {

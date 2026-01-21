@@ -12,12 +12,11 @@ use raft_core::{
     state_machine::StateMachine,
     storage::Storage,
 };
-use raft_sim::{
-    in_memory_chunk_collection::InMemoryChunkCollection,
+use raft_test_utils::{
+    frozen_timer::FrozenTimer, in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_node_collection::InMemoryNodeCollection,
     in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
-    no_action_timer::DummyTimer,
 };
 
 // ============================================================
@@ -26,8 +25,8 @@ use raft_sim::{
 
 #[test]
 fn test_liveness_start_election_increments_term() {
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     let mut current_term = 1;
     let mut role = NodeState::Follower;
@@ -47,8 +46,8 @@ fn test_liveness_start_election_increments_term() {
 
 #[test]
 fn test_safety_start_election_votes_for_self() {
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     let mut current_term = 1;
     let mut role = NodeState::Follower;
@@ -65,8 +64,8 @@ fn test_safety_start_election_votes_for_self() {
 
 #[test]
 fn test_liveness_start_election_generates_correct_message() {
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(5);
     let mut current_term = 5;
@@ -101,8 +100,8 @@ fn test_liveness_start_election_generates_correct_message() {
 
 #[test]
 fn test_safety_grant_vote_to_first_candidate() {
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
     let mut current_term = 1;
@@ -131,8 +130,8 @@ fn test_safety_grant_vote_to_first_candidate() {
 
 #[test]
 fn test_safety_reject_when_already_voted() {
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
     storage.set_voted_for(Some(3));
@@ -162,8 +161,8 @@ fn test_safety_reject_when_already_voted() {
 
 #[test]
 fn test_safety_grant_vote_to_same_candidate_twice() {
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
     storage.set_voted_for(Some(5));
@@ -190,8 +189,8 @@ fn test_safety_grant_vote_to_same_candidate_twice() {
 
 #[test]
 fn test_safety_reject_less_up_to_date_candidate() {
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
 
     // Local node has 3 entries in term 2
@@ -238,8 +237,8 @@ fn test_safety_reject_less_up_to_date_candidate() {
 
 #[test]
 fn test_safety_grant_to_equally_up_to_date_candidate() {
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
 
     storage.append_entries(&[
@@ -280,8 +279,8 @@ fn test_safety_grant_to_equally_up_to_date_candidate() {
 
 #[test]
 fn test_safety_update_term_from_higher_request() {
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
     let mut current_term = 1;
@@ -304,8 +303,8 @@ fn test_safety_update_term_from_higher_request() {
 
 #[test]
 fn test_safety_reject_stale_vote_request() {
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(5);
     let mut current_term = 5;
@@ -336,7 +335,7 @@ fn test_safety_reject_stale_vote_request() {
 
 #[test]
 fn test_liveness_become_leader_on_majority() {
-    let mut election = ElectionManager::<InMemoryNodeCollection, DummyTimer>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(2);
     let mut current_term = 2;
@@ -380,7 +379,7 @@ fn test_liveness_become_leader_on_majority() {
 
 #[test]
 fn test_liveness_stay_candidate_without_majority() {
-    let mut election = ElectionManager::<InMemoryNodeCollection, DummyTimer>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(2);
     let mut current_term = 2;
@@ -409,7 +408,7 @@ fn test_liveness_stay_candidate_without_majority() {
 
 #[test]
 fn test_liveness_handle_vote_rejection() {
-    let mut election = ElectionManager::<InMemoryNodeCollection, DummyTimer>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(2);
     let mut current_term = 2;
@@ -442,7 +441,7 @@ fn test_liveness_handle_vote_rejection() {
 
 #[test]
 fn test_safety_ignore_stale_vote_response() {
-    let mut election = ElectionManager::<InMemoryNodeCollection, DummyTimer>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(5);
     let mut current_term = 5;
@@ -474,7 +473,7 @@ fn test_safety_ignore_stale_vote_response() {
 
 #[test]
 fn test_safety_step_down_on_higher_term_in_response() {
-    let mut election = ElectionManager::<InMemoryNodeCollection, DummyTimer>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(2);
     let mut current_term = 2;
@@ -510,7 +509,7 @@ fn test_safety_step_down_on_higher_term_in_response() {
 
 #[test]
 fn test_liveness_majority_calculation_even_cluster() {
-    let mut election = ElectionManager::<InMemoryNodeCollection, DummyTimer>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
     let mut current_term = 1;
@@ -545,7 +544,7 @@ fn test_liveness_majority_calculation_even_cluster() {
 
 #[test]
 fn test_liveness_single_node_cluster() {
-    let mut election = ElectionManager::<InMemoryNodeCollection, DummyTimer>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
     let mut current_term = 1;
@@ -593,8 +592,8 @@ fn test_liveness_single_node_cluster() {
 fn test_liveness_start_election_with_compacted_log() {
     // Test: Candidate with compacted log starts election
     // Expected: RequestVote should use snapshot metadata for last_log_index/term
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(3);
     let mut current_term = 3;
@@ -667,8 +666,8 @@ fn test_liveness_start_election_with_compacted_log() {
 fn test_safety_grant_vote_with_compacted_log() {
     // Test: Voter with compacted log evaluates candidate
     // Expected: Should use snapshot metadata for up-to-date check
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(3);
     let mut current_term = 3;
@@ -686,7 +685,7 @@ fn test_safety_grant_vote_with_compacted_log() {
     // Create snapshot at index 15, term 2
     use raft_core::snapshot::{Snapshot, SnapshotMetadata};
     use raft_core::state_machine::StateMachine;
-    use raft_sim::in_memory_state_machine::InMemoryStateMachine;
+    use raft_test_utils::in_memory_state_machine::InMemoryStateMachine;
 
     let mut state_machine = InMemoryStateMachine::new();
     for i in 1..=15 {
@@ -746,8 +745,8 @@ fn test_safety_grant_vote_with_compacted_log() {
 fn test_safety_reject_candidate_with_older_log_than_snapshot() {
     // Test: Voter with compacted log rejects less up-to-date candidate
     // Expected: Candidate with log older than voter's snapshot should be rejected
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(3);
     let mut current_term = 3;
@@ -765,7 +764,7 @@ fn test_safety_reject_candidate_with_older_log_than_snapshot() {
 
     use raft_core::snapshot::{Snapshot, SnapshotMetadata};
     use raft_core::state_machine::StateMachine;
-    use raft_sim::in_memory_state_machine::InMemoryStateMachine;
+    use raft_test_utils::in_memory_state_machine::InMemoryStateMachine;
 
     let mut state_machine = InMemoryStateMachine::new();
     for i in 1..=15 {
@@ -813,8 +812,8 @@ fn test_safety_reject_candidate_with_older_log_than_snapshot() {
 fn test_safety_grant_vote_with_higher_term_than_snapshot() {
     // Test: Candidate with higher term but shorter log should win
     // Expected: Term comparison takes precedence over log length
-    let mut election: ElectionManager<InMemoryNodeCollection, DummyTimer> =
-        ElectionManager::new(DummyTimer);
+    let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
+        ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(3);
     let mut current_term = 3;

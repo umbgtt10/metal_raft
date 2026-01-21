@@ -15,7 +15,7 @@ use raft_core::{
     state_machine::StateMachine,
     storage::Storage,
 };
-use raft_sim::{
+use raft_test_utils::{
     in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_config_change_collection::InMemoryConfigChangeCollection,
     in_memory_log_entry_collection::InMemoryLogEntryCollection,

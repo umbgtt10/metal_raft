@@ -9,7 +9,9 @@ use raft_core::{
     state_machine::StateMachine,
     storage::Storage,
 };
-use raft_sim::{in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage};
+use raft_test_utils::{
+    in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
+};
 
 // ============================================================================
 // Construction and Basic Getters

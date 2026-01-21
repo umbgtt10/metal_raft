@@ -13,12 +13,12 @@ use raft_core::{
     raft_messages::RaftMsg,
     storage::Storage,
 };
-use raft_sim::{
-    in_memory_chunk_collection::InMemoryChunkCollection,
+use raft_test_utils::{
+    frozen_timer::FrozenTimer, in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_map_collection::InMemoryMapCollection,
     in_memory_node_collection::InMemoryNodeCollection, in_memory_storage::InMemoryStorage,
-    no_action_timer::DummyTimer, null_observer::NullObserver,
+    null_observer::NullObserver,
 };
 
 // ============================================================
@@ -61,7 +61,7 @@ fn test_start_pre_vote_returns_pre_vote_request() {
     let node_id = 1;
     let current_term = 5;
     let storage = InMemoryStorage::new();
-    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
     let msg = RoleTransitionManager::start_pre_vote::<
@@ -69,7 +69,7 @@ fn test_start_pre_vote_returns_pre_vote_request() {
         InMemoryLogEntryCollection,
         InMemoryChunkCollection,
         InMemoryNodeCollection,
-        DummyTimer,
+        FrozenTimer,
         NullObserver<String, InMemoryLogEntryCollection>,
         InMemoryStorage,
     >(
@@ -101,7 +101,7 @@ fn test_start_election_increments_term() {
     let mut current_term = 5;
     let mut storage = InMemoryStorage::new();
     let mut role = NodeState::Follower;
-    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
     let _msg = RoleTransitionManager::start_election::<
@@ -109,7 +109,7 @@ fn test_start_election_increments_term() {
         InMemoryLogEntryCollection,
         InMemoryChunkCollection,
         InMemoryNodeCollection,
-        DummyTimer,
+        FrozenTimer,
         NullObserver<String, InMemoryLogEntryCollection>,
         InMemoryStorage,
     >(
@@ -132,7 +132,7 @@ fn test_start_election_changes_role_to_candidate() {
     let mut current_term = 5;
     let mut storage = InMemoryStorage::new();
     let mut role = NodeState::Follower;
-    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
     let _msg = RoleTransitionManager::start_election::<
@@ -140,7 +140,7 @@ fn test_start_election_changes_role_to_candidate() {
         InMemoryLogEntryCollection,
         InMemoryChunkCollection,
         InMemoryNodeCollection,
-        DummyTimer,
+        FrozenTimer,
         NullObserver<String, InMemoryLogEntryCollection>,
         InMemoryStorage,
     >(
@@ -162,7 +162,7 @@ fn test_start_election_votes_for_self() {
     let mut current_term = 5;
     let mut storage = InMemoryStorage::new();
     let mut role = NodeState::Follower;
-    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
     let _msg = RoleTransitionManager::start_election::<
@@ -170,7 +170,7 @@ fn test_start_election_votes_for_self() {
         InMemoryLogEntryCollection,
         InMemoryChunkCollection,
         InMemoryNodeCollection,
-        DummyTimer,
+        FrozenTimer,
         NullObserver<String, InMemoryLogEntryCollection>,
         InMemoryStorage,
     >(
@@ -196,7 +196,7 @@ fn test_become_leader_changes_role() {
     let current_term = 5;
     let mut role = NodeState::Candidate;
     let storage = InMemoryStorage::new();
-    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
     let mut observer = NullObserver::new();
 
@@ -206,7 +206,7 @@ fn test_become_leader_changes_role() {
         InMemoryChunkCollection,
         InMemoryNodeCollection,
         InMemoryMapCollection,
-        DummyTimer,
+        FrozenTimer,
         NullObserver<String, InMemoryLogEntryCollection>,
         InMemoryStorage,
     >(
@@ -236,7 +236,7 @@ fn test_step_down_from_leader() {
     let mut current_term = 5;
     let mut storage = InMemoryStorage::new();
     let mut role = NodeState::Leader;
-    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
     RoleTransitionManager::step_down::<
@@ -244,7 +244,7 @@ fn test_step_down_from_leader() {
         InMemoryLogEntryCollection,
         InMemoryChunkCollection,
         InMemoryNodeCollection,
-        DummyTimer,
+        FrozenTimer,
         NullObserver<String, InMemoryLogEntryCollection>,
         InMemoryStorage,
     >(
@@ -273,7 +273,7 @@ fn test_step_down_from_candidate() {
     let mut current_term = 5;
     let mut storage = InMemoryStorage::new();
     let mut role = NodeState::Candidate;
-    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(DummyTimer);
+    let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
     RoleTransitionManager::step_down::<
@@ -281,7 +281,7 @@ fn test_step_down_from_candidate() {
         InMemoryLogEntryCollection,
         InMemoryChunkCollection,
         InMemoryNodeCollection,
-        DummyTimer,
+        FrozenTimer,
         NullObserver<String, InMemoryLogEntryCollection>,
         InMemoryStorage,
     >(

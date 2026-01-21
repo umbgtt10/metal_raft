@@ -7,7 +7,7 @@ use raft_core::{
     log_entry::LogEntry, snapshot::Snapshot, snapshot::SnapshotBuilder, snapshot::SnapshotData,
     snapshot::SnapshotMetadata, state_machine::StateMachine, storage::Storage,
 };
-use raft_sim::{
+use raft_test_utils::{
     in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_state_machine::InMemoryStateMachine,
     in_memory_storage::InMemoryStorage,

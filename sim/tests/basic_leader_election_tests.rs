@@ -9,9 +9,10 @@ use raft_core::{
     raft_messages::RaftMsg,
     timer_service::TimerKind,
 };
-use raft_sim::{
+use raft_sim::timeless_test_cluster::TimelessTestCluster;
+use raft_test_utils::{
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
-    in_memory_node_collection::InMemoryNodeCollection, timeless_test_cluster::TimelessTestCluster,
+    in_memory_node_collection::InMemoryNodeCollection,
 };
 
 #[test]

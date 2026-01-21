@@ -56,24 +56,6 @@ pub enum TimerKind {
 /// - `Payload`: The type of data stored in log entries (must match RaftMsg)
 /// - `LogEntries`: The collection type for log entries (must match RaftMsg)
 ///
-/// # Example
-///
-/// ```ignore
-/// struct MyObserver { min_level: EventLevel }
-///
-/// impl Observer for MyObserver {
-///     type Payload = String;
-///     type LogEntries = Vec<LogEntry<String>>;
-///
-///     fn min_level(&self) -> EventLevel { self.min_level }
-///
-///     fn leader_elected(&mut self, node: NodeId, term: Term) {
-///         if self.min_level >= EventLevel::Essential {
-///             println!("Node {} became LEADER (term {})", node, term);
-///         }
-///     }
-/// }
-/// ```
 pub trait Observer {
     /// The type of payload stored in log entries
     type Payload: Clone;

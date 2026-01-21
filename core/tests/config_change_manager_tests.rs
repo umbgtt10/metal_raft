@@ -7,7 +7,7 @@ use raft_core::{
     components::config_change_manager::{ConfigChangeManager, ConfigError},
     log_entry::ConfigurationChange,
 };
-use raft_sim::{
+use raft_test_utils::{
     in_memory_map_collection::InMemoryMapCollection,
     in_memory_node_collection::InMemoryNodeCollection,
 };
