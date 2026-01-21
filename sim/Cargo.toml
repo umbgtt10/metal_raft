@@ -1,0 +1,14 @@
+[package]
+name = "raft-sim"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+raft-core = { path = "../core" }
+indexmap.workspace = true
+rand.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+
+
