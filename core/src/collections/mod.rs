@@ -5,6 +5,6 @@
 pub mod chunk_collection;
 pub mod config_change_collection;
 pub mod configuration;
+pub mod log_entry_collection;
 pub mod map_collection;
 pub mod node_collection;
-pub mod log_entry_collection;

@@ -1,4 +1,7 @@
-use raft_core::{event::Event, log_entry::EntryType, node_state::NodeState, storage::Storage, timer_service::TimerKind};
+use raft_core::{
+    event::Event, log_entry::EntryType, node_state::NodeState, storage::Storage,
+    timer_service::TimerKind,
+};
 use raft_sim::timeless_test_cluster::TimelessTestCluster;
 
 #[test]

@@ -3,7 +3,8 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use raft_core::{
-    event::Event, log_entry::EntryType, state_machine::StateMachine, storage::Storage, timer_service::TimerKind
+    event::Event, log_entry::EntryType, state_machine::StateMachine, storage::Storage,
+    timer_service::TimerKind,
 };
 use raft_sim::timeless_test_cluster::TimelessTestCluster;
 

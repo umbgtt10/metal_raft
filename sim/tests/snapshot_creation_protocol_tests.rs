@@ -6,8 +6,8 @@ use raft_core::{
     event::Event, node_state::NodeState, state_machine::StateMachine, storage::Storage,
     timer_service::TimerKind,
 };
-use raft_test_utils::in_memory_state_machine::InMemoryStateMachine;
 use raft_sim::timeless_test_cluster::TimelessTestCluster;
+use raft_test_utils::in_memory_state_machine::InMemoryStateMachine;
 
 #[test]
 fn test_leader_creates_snapshot_after_threshold() {
