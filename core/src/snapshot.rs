@@ -2,19 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-//! Snapshot types and abstractions for Raft log compaction
-//!
-//! This module provides technology-agnostic abstractions for:
-//! - Creating snapshots of state machine state
-//! - Transferring snapshots in chunks between nodes
-//! - Assembling received chunks back into complete snapshots
-//!
-//! Implementations can use different storage strategies:
-//! - Vec<u8> for heap allocation
-//! - heapless::Vec<u8, N> for embedded systems
-//! - bytes::Bytes for zero-copy networking
-//! - Custom types for specific serialization formats
-
 use crate::{
     collections::chunk_collection::ChunkCollection,
     types::{LogIndex, Term},

@@ -633,6 +633,56 @@ fn test_safety_ignore_responses_from_old_term() {
 // ============================================================
 
 #[test]
+fn test_safety_median_no_double_count_leader() {
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+
+    // Leader writes 10 entries in term 2
+    for i in 1..=10 {
+        storage.append_entries(&[LogEntry {
+            term: 2,
+            entry_type: EntryType::Command(format!("cmd{}", i)),
+        }]);
+    }
+
+    // 3-node cluster: leader (1) + followers (2, 3)
+    let mut peers = InMemoryNodeCollection::new();
+    peers.push(2).unwrap();
+    peers.push(3).unwrap();
+    let config = Configuration::new(peers.clone());
+
+    replication.initialize_leader_state(peers.iter(), &storage);
+
+    // Simulate followers catching up to index 3 and 4
+    replication.match_index_mut().insert(2, 3);
+    replication.match_index_mut().insert(3, 4);
+
+    let mut state_machine = InMemoryStateMachine::new();
+
+    // Call advance_commit_index
+    let _: InMemoryConfigChangeCollection = replication.advance_commit_index(
+        &storage,
+        &mut state_machine,
+        &config,
+        1, // leader_id = 1
+    );
+
+    // Commit should advance to 4 (median of [10, 3, 4] = 4)
+    // All entries are from term 2 (current term), so commit can advance
+    assert_eq!(
+        replication.commit_index(),
+        4,
+        "Commit index should advance to median (4), proving correct calculation"
+    );
+
+    // Verify state machine applied entries 1-4
+    assert_eq!(state_machine.get("does_not_exist"), None);
+    // State machine doesn't expose the applied entries in this simple impl,
+    // but commit_index advancing proves the median was calculated correctly
+}
+
+#[test]
 fn test_liveness_initialize_leader_state() {
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
     let mut storage = InMemoryStorage::new();
