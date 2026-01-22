@@ -116,7 +116,7 @@ Exit criteria (all met):
 * ✅ Monotonic commit index
 * ✅ Correct recovery from partitions
 
-**Status**: Complete. 110+ tests passing across 33 test files. Validated in Embassy with UDP transport.
+**Status**: Complete. 144+ tests passing across 21 validation test files. Validated in Embassy with UDP transport.
 
 ### Phase 1 — Log Compaction & Crash Recovery ✅
 
@@ -223,9 +223,13 @@ Purpose:
 
 ### Phase 4 — Raft Advanced Features (In Progress)
 
-* **Dynamic membership changes** (70% complete)
-  - ✅ Single-Server Changes foundation (configuration tracking, validation, log entries)
-  - 🔲 Joint Consensus for multi-server changes (planned)
+* **Dynamic membership changes** (85% complete)
+  - ✅ Single-Server Changes fully implemented (add/remove one node at a time)
+  - ✅ Configuration tracking and quorum calculation
+  - ✅ Catching-up servers (non-voting until synced)
+  - ✅ Configuration survives snapshots and crashes
+  - ✅ 21 validation test files including comprehensive config API tests
+  - 🔲 Joint Consensus for multi-server changes (planned, ~2-3 weeks)
   - See: [docs/DYNAMIC_MEMBERSHIP_IMPLEMENTATION_PLAN.md](docs/DYNAMIC_MEMBERSHIP_IMPLEMENTATION_PLAN.md)
 * **Read-only query optimization** (planned)
 * **Leadership transfer** (planned)
@@ -279,10 +283,11 @@ The test harness is treated as a **formal contract**.
 
 ### Algorithmic Features (To Be Implemented)
 
-- 🔲 **Dynamic Membership**: Adding/removing nodes from the cluster
+- � **Dynamic Membership**: Adding/removing nodes from the cluster (85% complete)
+  - ✅ Single-Server Changes: Can safely add/remove one node at a time
+  - ✅ Configuration tracking, quorum calculation, validation, catching-up servers
+  - 🔲 Joint Consensus: Multi-server changes (~2-3 weeks remaining work)
   - Implementation plan: [docs/DYNAMIC_MEMBERSHIP_IMPLEMENTATION_PLAN.md](docs/DYNAMIC_MEMBERSHIP_IMPLEMENTATION_PLAN.md)
-  - Strategy: Single-Server Changes first (Weeks 1-3), then Joint Consensus upgrade (Weeks 4-5)
-  - Estimated: 50-65 hours over 5 weeks
 - 🔲 **Read-Only Queries**: Linearizable reads without log entries (leader leases)
 - 🔲 **Leadership Transfer**: Graceful handoff for maintenance
 
@@ -339,17 +344,19 @@ This project exists to demonstrate:
 
 - ✅ **Phase 0 — Raft Core**: Complete (Leader election, log replication, commit rules, Pre-Vote Protocol)
 - ✅ **Phase 1 — Log Compaction**: Complete (snapshots, InstallSnapshot RPC, crash recovery)
-- ✅ **Phase 2 — Simulation & Proof**: Complete (110+ tests passing)
+- ✅ **Phase 2 — Simulation & Proof**: Complete (144+ tests passing across 21 test files)
   - Deterministic test harness (timeless mode)
   - Wall-clock test harness (timefull mode)
-  - Comprehensive coverage: elections, replication, snapshots, partitions, recovery
+  - Comprehensive coverage: elections, replication, snapshots, partitions, recovery, configuration changes
 - ✅ **Phase 3 — `no_std + Embassy`**: Complete
   - Embassy with UDP transport validated
   - Same core logic runs in both validation and Embassy
   - Abstraction boundaries proven in most constrained environment
-- 🔄 **Phase 4 — Raft Advanced Features**: In Progress (70% complete)
-  - ✅ Single-Server configuration changes (foundation implemented)
-  - 🔲 Joint Consensus for multi-server changes
+- 🔄 **Phase 4 — Raft Advanced Features**: In Progress (85% complete)
+  - ✅ Single-Server configuration changes (fully implemented and tested)
+  - ✅ Configuration tracking with dynamic quorum calculation
+  - ✅ Safe add/remove server APIs with validation
+  - 🔲 Joint Consensus for multi-server changes (~2-3 weeks remaining)
   - 🔲 Read-only queries with leader leases
   - 🔲 Leadership transfer
 - 🔲 **Phase 5 — Cloud-Native (AWS)**: Planned (Tokio runtime, gRPC, Kubernetes deployment)

@@ -46,6 +46,19 @@ This design philosophy enables the same consensus logic to run unchanged across:
   - Crash recovery with snapshot restoration
   - Follower catch-up via snapshot transfer
 
+- ✅ **Pre-Vote Protocol**
+  - Prevents disruptions from partitioned nodes
+  - Term inflation protection
+  - No safety impact, pure liveness improvement
+  - See: [README.md](../README.md#pre-vote-protocol--enabled) for details
+
+- ✅ **Dynamic Membership (Single-Server Changes)**
+  - Add/remove one server at a time safely
+  - Configuration tracking and validation
+  - Catching-up servers (non-voting until synchronized)
+  - Configuration survives snapshots and crashes
+  - See: [DYNAMIC_MEMBERSHIP_IMPLEMENTATION_PLAN.md](../docs/DYNAMIC_MEMBERSHIP_IMPLEMENTATION_PLAN.md)
+
 **Architecture:**
 - ✅ Pure `no_std` implementation (only requires `alloc`)
 - ✅ Trait-based abstraction for all external dependencies
@@ -58,12 +71,13 @@ This design philosophy enables the same consensus logic to run unchanged across:
 
 The core has been validated through:
 - ✅ **Embassy**: 5-node cluster running on QEMU with UDP transport
-- ✅ **Raft-Sim**: Deterministic test harness with adversarial network conditions
+- ✅ **Raft-Validation**: Deterministic and timefull test harnesses with adversarial network conditions
 - ✅ **Client Request Handling**: Full write-path with commit acknowledgments
 - ✅ **Leader Re-election**: Recovery from failures and partitions
 - ✅ **Snapshot Creation & Transfer**: Automatic log compaction and follower catch-up
 - ✅ **Crash Recovery**: Node restart with state restoration from snapshots
-- ✅ **110+ Tests Passing**: 33 test files covering all core features
+- ✅ **Dynamic Membership**: Single-server configuration changes (add/remove one node at a time)
+- ✅ **144+ Tests Passing**: 21 test files in validation suite covering all core features
 
 ---
 
@@ -232,22 +246,33 @@ The `MessageHandler` is the heart of Raft message processing, implementing:
 
 The test suite is organized by feature/scenario:
 ```
-sim/tests/ (33 test files)
-├── Component Tests (5 files)
-│   ├── election_manager_tests.rs
-│   ├── log_replication_manager_tests.rs
-│   ├── snapshot_manager_tests.rs
-│   ├── config_change_manager_tests.rs
-│   └── role_transition_manager_tests.rs
-├── MessageHandler Tests (1 file)
-│   └── message_handler_tests.rs (7 tests)
-├── Election Protocol Tests (6 files)
+validation/tests/ (21 test files, 144+ tests)
+├── Component Tests (core/tests/ - 6 files)
+│   ├── election_manager_tests.rs (25 tests)
+│   ├── log_replication_manager_tests.rs (39 tests)
+│   ├── snapshot_manager_tests.rs (13 tests)
+│   ├── config_change_manager_tests.rs (21 tests)
+│   ├── role_transition_manager_tests.rs (22 tests)
+│   └── message_handler_tests.rs (24 tests)
+├── Election Protocol Tests (4 files)
 │   ├── basic_leader_election_tests.rs
-│   ├── pre_vote_tests.rs
-│   ├── split_leader_election_tests.rs
-│   ├── timed_election_tests.rs
-│   └── ...
-├── Replication & Safety Tests (9 files)
+│   ├── pre_vote_tests.rs (6 dedicated tests)
+│   ├── election_with_log_restriction.rs
+│   └── timed_election_tests.rs
+├── Replication & Safety Tests (6 files)
+│   ├── client_payload_replication_tests.rs
+│   ├── conflict_resolution_tests.rs
+│   ├── commit_index_advancement_tests.rs
+│   ├── follower_far_behind.rs
+│   ├── append_entry_idempotency.rs
+│   └── cannot_commit_old_entries.rs
+├── Snapshot Tests (4 files)
+│   ├── snapshot_creation_protocol_tests.rs
+│   ├── snapshot_infrastructure_tests.rs
+│   ├── crash_recovery_with_snapshots_tests.rs
+│   └── install_snapshot_candidate_tests.rs
+└── Membership Tests (1 file)
+    └── config_api_tests.rs (comprehensive config change tests)
 │   ├── client_payload_replication_tests.rs
 │   ├── commit_index_advancement_tests.rs
 │   ├── log_matching_property_tests.rs

@@ -1,7 +1,7 @@
 # Dynamic Membership Implementation Plan
 
-**Current Status:** Phase A (Single-Server Changes) ~70% Complete
-**Remaining Work:** Phase B (Joint Consensus Upgrade)
+**Current Status:** Phase A (Single-Server Changes) ~85% Complete
+**Remaining Work:** Phase A Final Polish (1 week) + Phase B (Joint Consensus Upgrade)
 
 **Total Estimated Effort:** 2-3 weeks for Joint Consensus
 
@@ -28,11 +28,11 @@ Dynamic membership allows adding and removing nodes from a Raft cluster without 
 
 ---
 
-## Implementation Notes (2026-01-21)
+## Implementation Notes (2026-01-22 - Updated)
 
-**What's Already Done (Phase A ~70%):**
+**What's Already Done (Phase A ~85%):**
 
-Tasks 1.1, 1.2, and significant parts of 1.3 from Week 1 are already implemented:
+Tasks 1.1, 1.2, 1.3, 1.4, 2.1, 2.2, and 2.3 from Weeks 1-3 are implemented and tested:
 
 1. ✅ **Configuration Entry Types** - [core/src/log_entry.rs](../core/src/log_entry.rs)
    - `EntryType::ConfigChange(ConfigurationChange)` enum
@@ -41,19 +41,49 @@ Tasks 1.1, 1.2, and significant parts of 1.3 from Week 1 are already implemented
 
 2. ✅ **Configuration Tracking** - [core/src/collections/configuration.rs](../core/src/collections/configuration.rs)
    - `Configuration<C: NodeCollection>` struct
-   - `contains()`, `size()`, `quorum_size()`, `has_quorum()` methods
+   - `contains()`, `size()`, `quorum_size()`, `has_quorum()`, `peers()` methods
    - Integrated into RaftNode via ConfigChangeManager
 
-3. ✅ **ConfigChangeManager** - [core/src/components/config_change_manager.rs](../core/src/components/config_change_manager.rs)
+3. ✅ **Dynamic Quorum Calculation** - [core/src/components/log_replication_manager.rs](../core/src/components/log_replication_manager.rs)
+   - `compute_median()` with leader filtering (fixed in recent refactor)
+   - Configuration-based quorum for both log replication and elections
+   - Respects current cluster membership dynamically
+
+4. ✅ **ConfigChangeManager** - [core/src/components/config_change_manager.rs](../core/src/components/config_change_manager.rs)
    - `add_server()` and `remove_server()` validation
    - Tracks pending configuration changes
    - Error handling for concurrent changes, duplicate nodes, etc.
    - Integrated into MessageHandler
+   - Apply logic with observer notifications
+   - Catching-up servers mechanism (non-voting until synced)
 
-4. ✅ **Observer Events** - [core/src/observer.rs](../core/src/observer.rs)
+5. ✅ **Observer Events** - [core/src/observer.rs](../core/src/observer.rs)
    - `configuration_change_applied()` callback
 
-**What Remains (Phase B):**
+6. ✅ **Snapshot Configuration Storage** - [core/src/snapshot.rs](../core/src/snapshot.rs)
+   - Configuration survives log compaction
+   - Proper restoration after crash
+
+7. ✅ **Comprehensive Testing** - [validation/tests/membership/](../validation/tests/membership/)
+   - 21 test files in validation suite (144+ total tests)
+   - config_api_tests.rs with full coverage
+   - Crash recovery tests
+   - Snapshot tests
+   - All tests passing
+
+**What Remains (Phase A - ~15%):**
+
+1. ⚠️ **Documentation Polish** (1-2 days)
+   - User-facing API documentation
+   - Migration guide from static to dynamic membership
+   - Best practices for adding/removing servers
+
+2. ⚠️ **Edge Case Testing** (2-3 days)
+   - More chaos/partition scenarios during config changes
+   - Stress testing with rapid sequential changes
+   - Multi-node failure during configuration change
+
+**What Remains (Phase B - Joint Consensus):**
 
 The primary remaining work is implementing **Joint Consensus** for safe multi-server changes:
 

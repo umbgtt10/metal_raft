@@ -12,6 +12,7 @@
 - Multiple async tasks coordinated via Embassy executor
 - Serialization with postcard (no protobuf/JSON dependencies)
 - Simulated Ethernet driver for testing without hardware
+- Full Raft feature set including snapshots and dynamic membership
 
 ## Architecture
 
