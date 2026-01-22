@@ -20,7 +20,7 @@ use raft_core::{
         message_handler::{ClientError, MessageHandler, MessageHandlerContext},
         snapshot_manager::SnapshotManager,
     },
-    log_entry::ConfigurationChange,
+    log_entry::{ConfigurationChange, EntryType, LogEntry},
     node_state::NodeState,
     raft_messages::RaftMsg,
     storage::Storage,
@@ -1143,4 +1143,337 @@ fn test_message_handler_ignores_stale_append_entries_response() {
     assert_eq!(replication.commit_index(), initial_commit_index);
     assert_eq!(role, NodeState::Leader);
     assert_eq!(current_term, 3);
+}
+
+#[test]
+fn test_message_handler_grants_lease_on_commit_advance() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+    let mut leader_lease = LeaderLease::new(5000, FrozenClock);
+
+    // Initialize replication state
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    // Add a log entry to replicate
+    let payload = "test command".to_string();
+    let log_entry = LogEntry {
+        term: 2,
+        entry_type: EntryType::Command(payload.clone()),
+    };
+    storage.append_entries(&[log_entry]);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+        &mut leader_lease,
+    );
+
+    // Initially lease should be invalid
+    assert!(!ctx.leader_lease.is_valid());
+
+    // Send append entries response that advances commit index to 1
+    let msg = RaftMsg::AppendEntriesResponse {
+        term: 2,
+        success: true,
+        match_index: 1, // Follower has replicated the entry at index 1
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    // Commit index should advance to 1 (quorum of 2 nodes)
+    assert_eq!(ctx.replication.commit_index(), 1);
+
+    // Lease should now be valid
+    assert!(ctx.leader_lease.is_valid());
+}
+
+#[test]
+fn test_message_handler_revokes_lease_on_step_down() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+    let mut leader_lease = LeaderLease::new(5000, FrozenClock);
+
+    // Initialize replication state
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+        &mut leader_lease,
+    );
+
+    // Grant lease manually for this test
+    ctx.leader_lease.grant();
+    assert!(ctx.leader_lease.is_valid());
+
+    // Simulate receiving a higher term message that causes step down
+    let msg = RaftMsg::AppendEntries {
+        term: 3,
+        prev_log_index: 0,
+        prev_log_term: 0,
+        entries: InMemoryLogEntryCollection::new(&[]),
+        leader_commit: 0,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    // Should have stepped down
+    assert_eq!(*ctx.role, NodeState::Follower);
+    assert_eq!(*ctx.current_term, 3);
+
+    // Lease should be revoked
+    assert!(!ctx.leader_lease.is_valid());
+}
+
+#[test]
+fn test_message_handler_does_not_grant_lease_for_non_leader() {
+    let node_id = 1;
+    let mut role = NodeState::Follower; // Not a leader
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+    let mut leader_lease = LeaderLease::new(5000, FrozenClock);
+
+    // Initialize replication state (even though we're not leader)
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+        &mut leader_lease,
+    );
+
+    // Initially lease should be invalid
+    assert!(!ctx.leader_lease.is_valid());
+
+    // Send append entries response - should be ignored since we're not leader
+    let msg = RaftMsg::AppendEntriesResponse {
+        term: 2,
+        success: true,
+        match_index: 1,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    // Lease should still be invalid (not granted)
+    assert!(!ctx.leader_lease.is_valid());
+}
+
+#[test]
+fn test_message_handler_does_not_grant_lease_for_stale_term() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 3; // Higher term than the response
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(3);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+    let mut leader_lease = LeaderLease::new(5000, FrozenClock);
+
+    // Initialize replication state
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+        &mut leader_lease,
+    );
+
+    // Initially lease should be invalid
+    assert!(!ctx.leader_lease.is_valid());
+
+    // Send append entries response with stale term (2 < 3)
+    let msg = RaftMsg::AppendEntriesResponse {
+        term: 2, // Stale term
+        success: true,
+        match_index: 1,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    // Lease should still be invalid (not granted due to stale term)
+    assert!(!ctx.leader_lease.is_valid());
+}
+
+#[test]
+fn test_message_handler_lease_remains_valid_across_multiple_commits() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+    let mut leader_lease = LeaderLease::new(5000, FrozenClock);
+
+    // Initialize replication state
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    // Add multiple log entries
+    let entries = vec![
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd1".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd2".to_string()),
+        },
+    ];
+    for entry in entries {
+        storage.append_entries(&[entry]);
+    }
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+        &mut leader_lease,
+    );
+
+    // Initially lease should be invalid
+    assert!(!ctx.leader_lease.is_valid());
+
+    // First response - advance commit to 1
+    let msg1 = RaftMsg::AppendEntriesResponse {
+        term: 2,
+        success: true,
+        match_index: 1,
+    };
+    handler.handle_message(&mut ctx, 2, msg1);
+    assert_eq!(ctx.replication.commit_index(), 1);
+    assert!(ctx.leader_lease.is_valid());
+
+    // Second response - advance commit to 2
+    let msg2 = RaftMsg::AppendEntriesResponse {
+        term: 2,
+        success: true,
+        match_index: 2,
+    };
+    handler.handle_message(&mut ctx, 2, msg2);
+    assert_eq!(ctx.replication.commit_index(), 2);
+
+    // Lease should still be valid (not revoked by subsequent commits)
+    assert!(ctx.leader_lease.is_valid());
 }

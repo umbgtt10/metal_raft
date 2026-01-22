@@ -122,6 +122,9 @@ pub fn handle_vote_request<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
     CCC: ConfigChangeCollection,
     CLK: Clock,
 {
+    // Validate term and step down if necessary, but don't return early
+    common::validate_term_and_step_down(ctx, term);
+
     let response = ctx.election.handle_vote_request(
         term,
         candidate_id,

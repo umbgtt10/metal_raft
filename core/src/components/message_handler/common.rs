@@ -43,7 +43,6 @@ pub fn send<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
     ctx.transport.send(to, msg);
 }
 
-
 #[allow(clippy::type_complexity)]
 pub fn broadcast<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
     ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
@@ -127,6 +126,9 @@ pub fn step_down<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
         ctx.observer,
         old_role,
     );
+
+    // Revoke leader lease when stepping down
+    ctx.leader_lease.revoke();
 }
 
 #[allow(clippy::type_complexity)]

@@ -43,6 +43,10 @@ pub fn handle_append_entries<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
     CCC: ConfigChangeCollection,
     CLK: Clock,
 {
+    if common::validate_term_and_step_down(ctx, term) {
+        return;
+    }
+
     common::reset_election_timer_if_valid_term(ctx, term);
 
     let (response, config_changes) = ctx.replication.handle_append_entries(
@@ -110,6 +114,9 @@ pub fn handle_append_entries_response<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
         if new_commit_index > old_commit_index {
             ctx.observer
                 .commit_advanced(*ctx.id, old_commit_index, new_commit_index);
+
+            // Grant leader lease when commit advances (quorum acknowledgment)
+            ctx.leader_lease.grant();
 
             // Apply any configuration changes
             common::apply_config_changes(ctx, config_changes);

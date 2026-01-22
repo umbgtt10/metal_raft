@@ -188,8 +188,14 @@ where
         index <= self.replication.commit_index()
     }
 
-    pub fn observer(&mut self) -> &mut O {
-        &mut self.observer
+    pub fn leader_lease(&self) -> &LeaderLease<CLK> {
+        &self.leader_lease
+    }
+
+    /// Check if this node can serve linearizable reads.
+    /// Returns true if this node is the leader and has a valid lease.
+    pub fn can_serve_linearizable_reads(&self) -> bool {
+        matches!(self.role, NodeState::Leader) && self.leader_lease.is_valid()
     }
 
     pub fn on_event(&mut self, event: Event<P, L, CC>)
