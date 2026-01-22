@@ -197,7 +197,8 @@ where
         }
     }
 
-    // Handler methods
+    // ===== ELECTION HANDLERS =====
+
     fn handle_pre_vote_request(
         &self,
         ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
@@ -278,8 +279,7 @@ where
         term: Term,
         vote_granted: bool,
     ) {
-        if term > *ctx.current_term {
-            self.step_down(ctx, term);
+        if self.validate_term_and_step_down(ctx, term) {
             return;
         }
 
@@ -297,6 +297,8 @@ where
         }
     }
 
+    // ===== REPLICATION HANDLERS =====
+
     #[allow(clippy::too_many_arguments)]
     fn handle_append_entries(
         &self,
@@ -311,10 +313,7 @@ where
         SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
         S: Storage<Payload = P, LogEntryCollection = L>,
     {
-        // Reset election timer on valid heartbeat
-        if term >= *ctx.current_term {
-            ctx.election.timer_service_mut().reset_election_timer();
-        }
+        self.reset_election_timer_if_valid_term(ctx, term);
 
         let (response, config_changes) = ctx.replication.handle_append_entries(
             term,
@@ -341,8 +340,7 @@ where
     ) where
         SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
     {
-        if term > *ctx.current_term {
-            self.step_down(ctx, term);
+        if self.validate_term_and_step_down(ctx, term) {
             return;
         }
 
@@ -373,6 +371,8 @@ where
         }
     }
 
+    // ===== SNAPSHOT HANDLERS =====
+
     #[allow(clippy::too_many_arguments)]
     fn handle_install_snapshot(
         &self,
@@ -388,10 +388,7 @@ where
     ) where
         SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
     {
-        // Reset election timer on valid snapshot
-        if term >= *ctx.current_term {
-            ctx.election.timer_service_mut().reset_election_timer();
-        }
+        self.reset_election_timer_if_valid_term(ctx, term);
 
         let response = ctx.replication.handle_install_snapshot(
             term,
@@ -416,8 +413,7 @@ where
         term: Term,
         success: bool,
     ) {
-        if term > *ctx.current_term {
-            self.step_down(ctx, term);
+        if self.validate_term_and_step_down(ctx, term) {
             return;
         }
 
@@ -434,7 +430,6 @@ where
         }
     }
 
-    // Support methods
     pub fn send(
         &self,
         ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
@@ -806,6 +801,29 @@ where
         ctx: &MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
     ) -> Role {
         RoleTransitionManager::node_state_to_role(ctx.role)
+    }
+
+    fn validate_term_and_step_down(
+        &self,
+        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        term: Term,
+    ) -> bool {
+        if term > *ctx.current_term {
+            self.step_down(ctx, term);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn reset_election_timer_if_valid_term(
+        &self,
+        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        term: Term,
+    ) {
+        if term >= *ctx.current_term {
+            ctx.election.timer_service_mut().reset_election_timer();
+        }
     }
 }
 
