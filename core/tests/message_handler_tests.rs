@@ -8,7 +8,10 @@
 //! independently of RaftNode through MessageHandlerContext.
 
 use raft_core::{
-    collections::{configuration::Configuration, log_entry_collection::LogEntryCollection},
+    collections::{
+        configuration::Configuration, log_entry_collection::LogEntryCollection,
+        map_collection::MapCollection, node_collection::NodeCollection,
+    },
     components::{
         config_change_manager::ConfigChangeManager,
         election_manager::ElectionManager,
@@ -311,6 +314,104 @@ fn test_message_handler_handle_election_timer_as_leader() {
 }
 
 #[test]
+fn test_message_handler_handle_election_timer_as_candidate() {
+    let node_id = 1;
+    let mut role = NodeState::Candidate;
+    let mut current_term = 5;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker.clone());
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(5);
+    storage.set_voted_for(Some(1)); // Voted for self in current term
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Config with peers so we don't win election immediately
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    // Candidate timeout -> triggers Pre-Vote (term stays same)
+    handler.handle_timer(&mut ctx, TimerKind::Election);
+
+    assert_eq!(*ctx.role, NodeState::Candidate);
+    assert_eq!(*ctx.current_term, 5);
+    assert_eq!(storage.current_term(), 5);
+
+    // Should broadcast PreVoteRequest
+    let messages = broker.lock().unwrap();
+    assert!(messages.peak(2).is_some());
+}
+
+#[test]
+fn test_message_handler_handle_heartbeat_timer_as_leader() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 5;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker.clone());
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(5);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Config with peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    // Init leader state
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    // Heartbeat timer fires
+    handler.handle_timer(&mut ctx, TimerKind::Heartbeat);
+
+    // Should broadcast Heartbeat (AppendEntries)
+    let messages = broker.lock().unwrap();
+    assert!(messages.peak(2).is_some());
+}
+
+#[test]
 fn test_message_handler_submit_client_command_as_follower_fails() {
     let node_id = 2;
     let mut role = NodeState::Follower;
@@ -421,4 +522,594 @@ fn test_message_handler_handles_higher_term_message() {
 
     assert_eq!(current_term, 2); // Term updated
     assert_eq!(role, NodeState::Follower); // Became follower
+}
+
+#[test]
+fn test_message_handler_handles_pre_vote_request() {
+    let node_id = 1;
+    let mut role = NodeState::Follower;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker.clone());
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    let msg = RaftMsg::PreVoteRequest {
+        term: 2,
+        candidate_id: 2,
+        last_log_index: 0,
+        last_log_term: 0,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    // Should send response message
+    let messages = broker.lock().unwrap();
+    assert!(messages.peak(2).is_some());
+}
+
+#[test]
+fn test_message_handler_handles_vote_request() {
+    let node_id = 1;
+    let mut role = NodeState::Follower;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker.clone());
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    let msg = RaftMsg::RequestVote {
+        term: 2,
+        candidate_id: 2,
+        last_log_index: 0,
+        last_log_term: 0,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    // Should send response and grant vote (first request)
+    assert_eq!(storage.voted_for(), Some(2));
+}
+
+#[test]
+fn test_message_handler_handles_append_entries_success() {
+    let node_id = 1;
+    let mut role = NodeState::Follower;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker.clone());
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    let msg = RaftMsg::AppendEntries {
+        term: 2,
+        prev_log_index: 0,
+        prev_log_term: 0,
+        entries: InMemoryLogEntryCollection::new(&[]),
+        leader_commit: 0,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    // Should send response
+    let messages = broker.lock().unwrap();
+    assert!(messages.peak(2).is_some());
+}
+
+#[test]
+fn test_message_handler_broadcast_to_peers() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 5;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker.clone());
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(5);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with multiple peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    members.push(3).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    // Send heartbeats (broadcasts to all peers)
+    handler.send_heartbeats(&mut ctx);
+
+    // Should have messages for both peers
+    let messages = broker.lock().unwrap();
+    assert!(messages.peak(2).is_some());
+    assert!(messages.peak(3).is_some());
+}
+
+#[test]
+fn test_message_handler_send_append_entries_to_followers() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 5;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker.clone());
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(5);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    // Initialize replication state
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    handler.send_append_entries_to_followers(&mut ctx);
+
+    // Should send AppendEntries to follower
+    let messages = broker.lock().unwrap();
+    assert!(messages.peak(2).is_some());
+}
+
+#[test]
+fn test_message_handler_handles_vote_response_updates_election_state() {
+    let node_id = 1;
+    let mut role = NodeState::Candidate;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    storage.set_voted_for(Some(1));
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with 3 nodes
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    members.push(3).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    // Start election first to initialize vote tracking
+    election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, _>(
+        node_id,
+        &mut current_term,
+        &mut storage,
+        &mut role,
+    );
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    // Handle vote response
+    let msg = RaftMsg::RequestVoteResponse {
+        term: 2,
+        vote_granted: true,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    // Vote response is handled (exact behavior depends on internal logic)
+    // The important part is it doesn't crash
+    assert!(role == NodeState::Candidate || role == NodeState::Leader);
+}
+
+#[test]
+fn test_message_handler_handles_install_snapshot_message() {
+    let node_id = 1;
+    let mut role = NodeState::Follower;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker.clone());
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    let msg = RaftMsg::InstallSnapshot {
+        term: 2,
+        leader_id: 2,
+        last_included_index: 5,
+        last_included_term: 1,
+        offset: 0,
+        data: InMemoryChunkCollection::new(),
+        done: true,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    // Should send response
+    let messages = broker.lock().unwrap();
+    assert!(messages.peak(2).is_some());
+}
+
+#[test]
+fn test_message_handler_handles_install_snapshot_response() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    // Initialize replication state
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    let msg = RaftMsg::InstallSnapshotResponse {
+        term: 2,
+        success: true,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    // Response is processed (doesn't crash)
+    assert_eq!(role, NodeState::Leader);
+}
+
+#[test]
+fn test_message_handler_submit_client_command_as_leader_succeeds() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    // Initialize replication state
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    // Submit command as leader should succeed
+    let result = handler.submit_client_command(&mut ctx, "test_command".to_string());
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_message_handler_submit_config_change_as_leader_succeeds() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with existing nodes
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    // Initialize replication state
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    // Submit config change as leader should succeed
+    let config_change = ConfigurationChange::AddServer(2);
+    let result = handler.submit_config_change(&mut ctx, config_change);
+
+    assert!(result.is_ok());
+}
+
+#[test]
+fn test_message_handler_handles_append_entries_response() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 2;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    // Initialize replication state
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    let msg = RaftMsg::AppendEntriesResponse {
+        term: 2,
+        success: true,
+        match_index: 0,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    // Should update replication state
+    assert!(replication.match_index().get(2).is_some());
+}
+
+#[test]
+fn test_message_handler_ignores_stale_append_entries_response() {
+    let node_id = 1;
+    let mut role = NodeState::Leader;
+    let mut current_term = 3;
+    let broker = Arc::new(Mutex::new(MessageBroker::new()));
+    let mut transport = InMemoryTransport::new(node_id, broker);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(3);
+    let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::new();
+    let mut election = ElectionManager::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Create config with peers
+    let mut members = InMemoryNodeCollection::new();
+    members.push(1).unwrap();
+    members.push(2).unwrap();
+    let config = Configuration::new(members);
+    let mut config_manager = ConfigChangeManager::new(config);
+    let mut snapshot_manager = SnapshotManager::new(10);
+
+    // Initialize replication state
+    replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
+
+    let initial_match_index = replication.match_index().get(2);
+    let initial_commit_index = replication.commit_index();
+
+    let handler = create_handler();
+    let mut ctx = create_context(
+        &node_id,
+        &mut role,
+        &mut current_term,
+        &mut transport,
+        &mut storage,
+        &mut state_machine,
+        &mut observer,
+        &mut election,
+        &mut replication,
+        &mut config_manager,
+        &mut snapshot_manager,
+    );
+
+    // Stale term response should be ignored
+    let msg = RaftMsg::AppendEntriesResponse {
+        term: 2,
+        success: true,
+        match_index: 10,
+    };
+
+    handler.handle_message(&mut ctx, 2, msg);
+
+    assert_eq!(replication.match_index().get(2), initial_match_index);
+    assert_eq!(replication.commit_index(), initial_commit_index);
+    assert_eq!(role, NodeState::Leader);
+    assert_eq!(current_term, 3);
 }

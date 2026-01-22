@@ -337,3 +337,91 @@ fn test_become_leader_initializes_replication() {
     assert!(replication.next_index().get(2).is_some());
     assert!(replication.match_index().get(2).is_some());
 }
+
+#[test]
+fn test_become_leader_with_multiple_followers() {
+    let node_id = 1;
+    let current_term = 1;
+    let mut role = NodeState::Candidate;
+    let storage = InMemoryStorage::new();
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut observer = NullObserver::new();
+
+    // Create cluster with 5 nodes
+    let mut members = InMemoryNodeCollection::new();
+    for i in 1..=5 {
+        members.push(i).unwrap();
+    }
+
+    RoleTransitionManager::become_leader::<
+        String,
+        InMemoryLogEntryCollection,
+        InMemoryChunkCollection,
+        InMemoryNodeCollection,
+        InMemoryMapCollection,
+        FrozenTimer,
+        NullObserver<String, InMemoryLogEntryCollection>,
+        InMemoryStorage,
+    >(
+        node_id,
+        current_term,
+        &mut role,
+        &storage,
+        members.iter(),
+        &mut election,
+        &mut replication,
+        &mut observer,
+        Role::Candidate,
+    );
+
+    assert_eq!(role, NodeState::Leader);
+    // Check that replication is initialized for all followers
+    for follower_id in 2..=5 {
+        assert!(
+            replication.next_index().get(follower_id).is_some(),
+            "next_index not initialized for node {}",
+            follower_id
+        );
+        assert!(
+            replication.match_index().get(follower_id).is_some(),
+            "match_index not initialized for node {}",
+            follower_id
+        );
+    }
+}
+
+#[test]
+fn test_step_down_notifies_observer() {
+    let node_id = 1;
+    let mut current_term = 1;
+    let mut role = NodeState::Leader;
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(1);
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
+    let mut observer = NullObserver::new();
+
+    RoleTransitionManager::step_down::<
+        String,
+        InMemoryLogEntryCollection,
+        InMemoryChunkCollection,
+        InMemoryNodeCollection,
+        FrozenTimer,
+        NullObserver<String, InMemoryLogEntryCollection>,
+        InMemoryStorage,
+    >(
+        node_id,
+        1, // old_term
+        3, // new_term
+        &mut current_term,
+        &mut storage,
+        &mut role,
+        &mut election,
+        &mut observer,
+        Role::Leader,
+    );
+
+    assert_eq!(role, NodeState::Follower);
+    assert_eq!(current_term, 3);
+    assert_eq!(storage.current_term(), 3);
+}

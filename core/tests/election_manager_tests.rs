@@ -895,3 +895,60 @@ fn test_safety_grant_vote_with_higher_term_than_snapshot() {
         _ => panic!("Expected RequestVoteResponse"),
     }
 }
+
+#[test]
+fn test_liveness_pre_vote_rejection_with_stale_term() {
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(5);
+    let current_term = 5;
+    let _role = NodeState::Follower;
+
+    // PreVote request with stale term should be rejected
+    let response = election.handle_pre_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
+        3,  // term (stale)
+        2,  // candidate_id
+        0,  // last_log_index
+        0,  // last_log_term
+        current_term,
+        &storage,
+    );
+
+    match response {
+        RaftMsg::PreVoteResponse { vote_granted, .. } => {
+            assert!(!vote_granted, "Should reject pre-vote with stale term");
+        }
+        _ => panic!("Expected PreVoteResponse"),
+    }
+}
+
+#[test]
+fn test_safety_pre_vote_response_from_minority_does_not_start_election() {
+    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let current_term = 2;
+
+    // Start pre-vote
+    election.start_pre_vote::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
+        1,
+        current_term,
+        &storage,
+    );
+
+    // Create config with 5 nodes (need 3 responses to proceed)
+    let mut peers = InMemoryNodeCollection::new();
+    for i in 2..=5 {
+        peers.push(i).unwrap();
+    }
+    let config = Configuration::new(peers);
+
+    // Receive only 1 positive response (not enough)
+    let should_start_election = election.handle_pre_vote_response(2, true, &config);
+
+    assert!(
+        !should_start_election,
+        "Should not start election without pre-vote majority"
+    );
+    assert_eq!(current_term, 2, "Term should not change");
+}

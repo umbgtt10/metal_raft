@@ -4,11 +4,12 @@
 
 use raft_core::{
     collections::{
-        configuration::Configuration, log_entry_collection::LogEntryCollection,
-        map_collection::MapCollection, node_collection::NodeCollection,
+        config_change_collection::ConfigChangeCollection, configuration::Configuration,
+        log_entry_collection::LogEntryCollection, map_collection::MapCollection,
+        node_collection::NodeCollection,
     },
     components::log_replication_manager::LogReplicationManager,
-    log_entry::{EntryType, LogEntry},
+    log_entry::{ConfigurationChange, EntryType, LogEntry},
     node_state::NodeState,
     raft_messages::RaftMsg,
     snapshot::{Snapshot, SnapshotMetadata},
@@ -70,6 +71,44 @@ fn test_liveness_accept_entries_from_leader() {
 
     assert_eq!(storage.last_log_index(), 2);
     assert_eq!(replication.commit_index(), 2);
+}
+
+#[test]
+fn test_liveness_append_entries_with_config_change_emits_change() {
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut current_term = 2;
+    let mut role = NodeState::Follower;
+    let mut state_machine = InMemoryStateMachine::new();
+
+    let entries = InMemoryLogEntryCollection::new(&[
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd1".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::ConfigChange(ConfigurationChange::AddServer(2)),
+        },
+    ]);
+
+    let (_response, config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+        2, // term
+        0, // prev_log_index
+        0, // prev_log_term
+        entries,
+        2, // leader_commit includes config change
+        &mut current_term,
+        &mut storage,
+        &mut state_machine,
+        &mut role,
+    );
+
+    assert_eq!(config_changes.len(), 1);
+    let (index, change) = config_changes.iter().next().expect("Missing config change");
+    assert_eq!(index, 2);
+    assert_eq!(change, &ConfigurationChange::AddServer(2));
 }
 
 #[test]
