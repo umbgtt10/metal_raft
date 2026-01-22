@@ -1868,3 +1868,387 @@ fn test_heartbeat_message() {
         _ => panic!("Expected AppendEntries"),
     }
 }
+
+// ============================================================
+// Catching-up server tests (Dynamic Membership Phase A)
+// ============================================================
+
+#[test]
+fn test_mark_server_as_catching_up() {
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Initially, no servers are catching up
+    assert!(!replication.is_catching_up(2));
+
+    // Mark server 2 as catching up
+    replication.mark_server_catching_up(2);
+
+    // Verify server is now marked as catching up
+    assert!(replication.is_catching_up(2));
+    assert!(
+        !replication.is_catching_up(3),
+        "Other servers should not be affected"
+    );
+}
+
+#[test]
+fn test_mark_already_catching_up_server_is_idempotent() {
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+
+    // Mark server 2 as catching up twice
+    replication.mark_server_catching_up(2);
+    replication.mark_server_catching_up(2);
+
+    // Should still be catching up (no panic or error)
+    assert!(replication.is_catching_up(2));
+}
+
+#[test]
+fn test_promote_caught_up_server_when_match_index_equals_commit_index() {
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+
+    // Add 5 entries and commit up to index 3
+    storage.append_entries(&[
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd1".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd2".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd3".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd4".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd5".to_string()),
+        },
+    ]);
+
+    let mut peers = InMemoryNodeCollection::new();
+    peers.push(2).unwrap();
+    peers.push(3).unwrap();
+    let config = Configuration::new(peers.clone());
+
+    replication.initialize_leader_state(peers.iter(), &storage);
+
+    let mut state_machine = InMemoryStateMachine::new();
+
+    // Establish commit_index at 3 by getting majority
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+        2,
+        true,
+        3,
+        &storage,
+        &mut state_machine,
+        &config,
+    );
+    assert_eq!(
+        replication.commit_index(),
+        3,
+        "Commit index should be at 3 with majority"
+    );
+
+    // Mark server 4 as catching up (new server being added)
+    replication.mark_server_catching_up(4);
+    replication.next_index_mut().insert(4, 1);
+    replication.match_index_mut().insert(4, 0);
+
+    // Server 4 is catching up
+    assert!(replication.is_catching_up(4));
+
+    // Server 4 replicates up to index 2 (not yet caught up)
+    let _config_changes: InMemoryConfigChangeCollection = replication
+        .handle_append_entries_response(4, true, 2, &storage, &mut state_machine, &config);
+
+    assert!(
+        replication.is_catching_up(4),
+        "Should still be catching up at index 2"
+    );
+
+    // Server 4 replicates up to index 3 (matches commit_index)
+    let _config_changes: InMemoryConfigChangeCollection = replication
+        .handle_append_entries_response(4, true, 3, &storage, &mut state_machine, &config);
+
+    // Should be promoted (no longer catching up)
+    assert!(
+        !replication.is_catching_up(4),
+        "Should be promoted when match_index >= commit_index"
+    );
+}
+
+#[test]
+fn test_catching_up_server_does_not_affect_commit_index() {
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+
+    // Add 3 entries
+    storage.append_entries(&[
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd1".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd2".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd3".to_string()),
+        },
+    ]);
+
+    // 3-node cluster: self, node 2, node 3
+    let mut peers = InMemoryNodeCollection::new();
+    peers.push(2).unwrap();
+    peers.push(3).unwrap();
+    let config = Configuration::new(peers.clone());
+
+    replication.initialize_leader_state(peers.iter(), &storage);
+
+    // Add node 4 as catching-up server
+    replication.mark_server_catching_up(4);
+    replication.next_index_mut().insert(4, 1);
+    replication.match_index_mut().insert(4, 0);
+
+    let mut state_machine = InMemoryStateMachine::new();
+
+    // Node 2 confirms index 3
+    let _config_changes: InMemoryConfigChangeCollection = replication
+        .handle_append_entries_response(2, true, 3, &storage, &mut state_machine, &config);
+
+    // Now 2 out of 3 voting members (leader + node 2) have index 3
+    // This is a majority of voting members, so commit_index should advance
+    // Node 4 (catching up) should not be counted
+    assert_eq!(
+        replication.commit_index(),
+        3,
+        "Commit index should advance with majority of voting members, ignoring catching-up server"
+    );
+}
+
+#[test]
+fn test_multiple_catching_up_servers_excluded_from_quorum() {
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+
+    storage.append_entries(&[
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd1".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd2".to_string()),
+        },
+    ]);
+
+    // 3-node voting cluster
+    let mut peers = InMemoryNodeCollection::new();
+    peers.push(2).unwrap();
+    peers.push(3).unwrap();
+    let config = Configuration::new(peers.clone());
+
+    replication.initialize_leader_state(peers.iter(), &storage);
+
+    // Add two catching-up servers
+    replication.mark_server_catching_up(4);
+    replication.mark_server_catching_up(5);
+    replication.next_index_mut().insert(4, 1);
+    replication.match_index_mut().insert(4, 0);
+    replication.next_index_mut().insert(5, 1);
+    replication.match_index_mut().insert(5, 0);
+
+    let mut state_machine = InMemoryStateMachine::new();
+
+    // Catching-up servers replicate fully, but shouldn't affect quorum
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+        4,
+        true,
+        2,
+        &storage,
+        &mut state_machine,
+        &config,
+    );
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+        5,
+        true,
+        2,
+        &storage,
+        &mut state_machine,
+        &config,
+    );
+
+    // Still need majority of the original 3 voting nodes
+    // Leader has index 2, but we need one more voting member
+    assert_eq!(
+        replication.commit_index(),
+        0,
+        "Catching-up servers should not contribute to quorum"
+    );
+
+    // Now node 2 (voting member) confirms index 2
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+        2,
+        true,
+        2,
+        &storage,
+        &mut state_machine,
+        &config,
+    );
+
+    // Now we have majority of voting members (leader + node 2)
+    assert_eq!(
+        replication.commit_index(),
+        2,
+        "Should commit with majority of voting members"
+    );
+}
+
+#[test]
+fn test_catching_up_server_promotion_via_snapshot() {
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+
+    // Simple case: entries 1-12
+    for i in 1..=12 {
+        storage.append_entries(&[LogEntry {
+            term: 2,
+            entry_type: EntryType::Command(format!("cmd{}", i)),
+        }]);
+    }
+
+    let mut peers = InMemoryNodeCollection::new();
+    peers.push(2).unwrap();
+    let config = Configuration::new(peers.clone());
+
+    replication.initialize_leader_state(peers.iter(), &storage);
+
+    let mut state_machine = InMemoryStateMachine::new();
+
+    // Establish commit_index at 10 by getting confirmation from peer
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+        2,
+        true,
+        10,
+        &storage,
+        &mut state_machine,
+        &config,
+    );
+    assert_eq!(replication.commit_index(), 10);
+
+    // New server 3 is catching up
+    replication.mark_server_catching_up(3);
+    replication.next_index_mut().insert(3, 1);
+    replication.match_index_mut().insert(3, 0);
+
+    assert!(replication.is_catching_up(3));
+
+    // Server 3 installs snapshot up to index 10 (matches commit_index exactly)
+    replication.handle_install_snapshot_response(3, 2, true, 10);
+
+    // Should be promoted when match_index equals commit_index
+    assert!(
+        !replication.is_catching_up(3),
+        "Should be promoted when reaching commit_index via snapshot"
+    );
+}
+
+#[test]
+fn test_catching_up_server_not_promoted_if_behind_commit_index() {
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+
+    storage.append_entries(&[
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd1".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd2".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd3".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd4".to_string()),
+        },
+        LogEntry {
+            term: 2,
+            entry_type: EntryType::Command("cmd5".to_string()),
+        },
+    ]);
+
+    let mut peers = InMemoryNodeCollection::new();
+    peers.push(2).unwrap();
+    let config = Configuration::new(peers.clone());
+
+    replication.initialize_leader_state(peers.iter(), &storage);
+
+    let mut state_machine = InMemoryStateMachine::new();
+
+    // Establish commit_index at 5 by getting confirmation from peer 2
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+        2,
+        true,
+        5,
+        &storage,
+        &mut state_machine,
+        &config,
+    );
+    assert_eq!(
+        replication.commit_index(),
+        5,
+        "Cluster has committed up to index 5"
+    );
+
+    // New server 3 is catching up
+    replication.mark_server_catching_up(3);
+    replication.next_index_mut().insert(3, 1);
+    replication.match_index_mut().insert(3, 0);
+
+    // Server replicates up to index 4 (still behind commit_index of 5)
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+        3,
+        true,
+        4,
+        &storage,
+        &mut state_machine,
+        &config,
+    );
+
+    assert!(
+        replication.is_catching_up(3),
+        "Should remain catching up when match_index < commit_index"
+    );
+
+    // Server replicates up to index 5 (equals commit_index)
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+        3,
+        true,
+        5,
+        &storage,
+        &mut state_machine,
+        &config,
+    );
+
+    assert!(
+        !replication.is_catching_up(3),
+        "Should be promoted when match_index >= commit_index"
+    );
+}

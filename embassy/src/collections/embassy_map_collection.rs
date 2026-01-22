@@ -55,16 +55,27 @@ impl MapCollection for EmbassyMapCollection {
         &self,
         leader_last_index: LogIndex,
         config: &Configuration<C>,
+        catching_up_servers: &Self,
     ) -> Option<LogIndex> {
-        if self.is_empty() {
-            return None;
-        }
-
         let mut indices: heapless::Vec<LogIndex, 10> = heapless::Vec::new();
+
+        // Add leader's own index
         let _ = indices.push(leader_last_index);
 
-        for index in self.values() {
-            let _ = indices.push(index);
+        // Add match_index values for voting members only (exclude catching-up servers)
+        for member in config.members.iter() {
+            // Skip catching-up servers
+            if catching_up_servers.get(member).is_some() {
+                continue;
+            }
+
+            // Get match_index for this member
+            if let Some(match_idx) = self.get(member) {
+                let _ = indices.push(match_idx);
+            } else {
+                // Not yet in match_index map
+                let _ = indices.push(0);
+            }
         }
 
         if indices.is_empty() {
@@ -73,11 +84,8 @@ impl MapCollection for EmbassyMapCollection {
 
         indices.sort_unstable();
 
-        let quorum_size = config.quorum_size();
-        if indices.len() >= quorum_size {
-            Some(indices[indices.len() - quorum_size])
-        } else {
-            None
-        }
+        // Median is at position that represents majority
+        let median_idx = (indices.len() - 1) / 2;
+        Some(indices[median_idx])
     }
 }

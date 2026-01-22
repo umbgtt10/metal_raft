@@ -171,6 +171,9 @@ where
                         let next_index = last_log_index + 1;
                         replication.next_index_mut().insert(*node_id, next_index);
                         replication.match_index_mut().insert(*node_id, 0);
+
+                        // Mark new server as catching up (non-voting until it reaches commit_index)
+                        replication.mark_server_catching_up(*node_id);
                     }
                 }
                 ConfigurationChange::RemoveServer(node_id) => {

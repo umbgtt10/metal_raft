@@ -50,30 +50,39 @@ impl MapCollection for InMemoryMapCollection {
         &self,
         leader_last_index: LogIndex,
         config: &Configuration<C>,
+        catching_up_servers: &Self,
     ) -> Option<LogIndex> {
-        let total_nodes = config.size();
         let mut indices: Vec<LogIndex> = Vec::new();
 
         // Add leader's own index
         indices.push(leader_last_index);
 
-        // Add all peer match_index values
-        for (_, &index) in self.map.iter() {
-            indices.push(index);
+        // Add match_index values for voting members only (exclude catching-up servers)
+        for member in config.members.iter() {
+            // Skip catching-up servers
+            if catching_up_servers.get(member).is_some() {
+                continue;
+            }
+
+            // Get match_index for this member
+            if let Some(match_idx) = self.get(member) {
+                indices.push(match_idx);
+            } else {
+                // Not yet in match_index map (shouldn't happen for valid config members)
+                indices.push(0);
+            }
         }
 
-        // Pad with zeros for peers we haven't heard from
-        while indices.len() < total_nodes {
-            indices.push(0);
+        if indices.is_empty() {
+            return None;
         }
 
         // Sort to find median
         indices.sort_unstable();
 
         // Median is at position that represents majority
-        // For N nodes, we need ceil(N/2) = (N+1)/2 nodes
-        // The commit index is the value at position: N - (N+1)/2 = (N-1)/2
-        let median_idx = (total_nodes - 1) / 2;
+        // For N nodes, commit index is at (N-1)/2 position
+        let median_idx = (indices.len() - 1) / 2;
         Some(indices[median_idx])
     }
 }

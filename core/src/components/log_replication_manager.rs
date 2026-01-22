@@ -26,6 +26,8 @@ where
     match_index: M,
     commit_index: LogIndex,
     last_applied: LogIndex,
+    /// Servers that are catching up and should not participate in quorum
+    catching_up_servers: M,
 }
 
 impl<M> LogReplicationManager<M>
@@ -38,6 +40,7 @@ where
             match_index: M::new(),
             commit_index: 0,
             last_applied: 0,
+            catching_up_servers: M::new(),
         }
     }
 
@@ -215,6 +218,10 @@ where
             if match_index > current_match {
                 self.match_index.insert(from, match_index);
                 self.next_index.insert(from, match_index + 1);
+
+                // Check if this server has caught up and can participate in quorum
+                self.check_and_promote_caught_up_server(from);
+
                 return self.advance_commit_index(storage, state_machine, config);
             }
         } else {
@@ -339,7 +346,10 @@ where
     {
         let leader_index = storage.last_log_index();
 
-        if let Some(new_commit) = self.match_index.compute_median(leader_index, config) {
+        if let Some(new_commit) =
+            self.match_index
+                .compute_median(leader_index, config, &self.catching_up_servers)
+        {
             if new_commit > self.commit_index {
                 if let Some(entry) = storage.get_entry(new_commit) {
                     if entry.term == storage.current_term() {
@@ -482,8 +492,34 @@ where
             // Update next_index and match_index to snapshot point
             self.next_index.insert(peer, last_included_index + 1);
             self.match_index.insert(peer, last_included_index);
+
+            // Check if this server has caught up
+            self.check_and_promote_caught_up_server(peer);
         }
         // On failure, next_index stays the same and leader will retry
+    }
+
+    /// Mark a server as catching up (non-voting until it catches up)
+    pub fn mark_server_catching_up(&mut self, node_id: NodeId) {
+        self.catching_up_servers.insert(node_id, 1);
+    }
+
+    /// Check if a server has caught up and promote it to voting status
+    fn check_and_promote_caught_up_server(&mut self, node_id: NodeId) {
+        // Only check servers that are currently marked as catching up
+        if self.catching_up_servers.get(node_id).is_some() {
+            let match_idx = self.match_index.get(node_id).unwrap_or(0);
+
+            // Server has caught up when its match_index reaches commit_index
+            if match_idx >= self.commit_index {
+                self.catching_up_servers.remove(node_id);
+            }
+        }
+    }
+
+    /// Check if a server is currently catching up
+    pub fn is_catching_up(&self, node_id: NodeId) -> bool {
+        self.catching_up_servers.get(node_id).is_some()
     }
 }
 
