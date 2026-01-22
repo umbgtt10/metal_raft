@@ -39,6 +39,7 @@ type InMemoryTimefullRaftNode = RaftNode<
     MockTimerService,
     NullObserver<String, InMemoryLogEntryCollection>,
     InMemoryConfigChangeCollection,
+    MockClock,
 >;
 
 pub struct TimefullTestCluster {
@@ -99,7 +100,7 @@ impl TimefullTestCluster {
             .with_snapshot_threshold(self.snapshot_threshold)
             .with_election(ElectionManager::new(timer))
             .with_replication(LogReplicationManager::new())
-            .with_transport(transport, peers, NullObserver::new());
+            .with_transport(transport, peers, NullObserver::new(), self.clock.clone());
 
         self.nodes.insert(id, node);
     }
@@ -136,7 +137,7 @@ impl TimefullTestCluster {
                 .with_snapshot_threshold(self.snapshot_threshold)
                 .with_election(ElectionManager::new(timer))
                 .with_replication(LogReplicationManager::new())
-                .with_transport(transport, peers, NullObserver::new());
+                .with_transport(transport, peers, NullObserver::new(), self.clock.clone());
 
             self.nodes.insert(node_id, new_node);
         }

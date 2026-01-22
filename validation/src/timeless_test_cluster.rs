@@ -14,13 +14,16 @@ use raft_core::{
     types::NodeId,
 };
 use raft_test_utils::{
-    frozen_timer::FrozenTimer, in_memory_chunk_collection::InMemoryChunkCollection,
+    frozen_timer::{FrozenClock, FrozenTimer},
+    in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_config_change_collection::InMemoryConfigChangeCollection,
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_map_collection::InMemoryMapCollection,
     in_memory_node_collection::InMemoryNodeCollection,
-    in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
-    in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
+    in_memory_state_machine::InMemoryStateMachine,
+    in_memory_storage::InMemoryStorage,
+    in_memory_transport::InMemoryTransport,
+    message_broker::MessageBroker,
     null_observer::NullObserver,
 };
 use std::sync::{Arc, Mutex};
@@ -37,6 +40,7 @@ pub type TestNode = RaftNode<
     FrozenTimer,
     NullObserver<String, InMemoryLogEntryCollection>,
     InMemoryConfigChangeCollection,
+    FrozenClock,
 >;
 
 pub struct TimelessTestCluster {
@@ -98,6 +102,7 @@ impl TimelessTestCluster {
                 transport,
                 InMemoryNodeCollection::new(),
                 NullObserver::new(),
+                FrozenClock,
             );
 
         self.nodes.insert(id, node);
@@ -151,7 +156,7 @@ impl TimelessTestCluster {
                 .with_snapshot_threshold(self.snapshot_threshold)
                 .with_election(ElectionManager::new(FrozenTimer))
                 .with_replication(LogReplicationManager::new())
-                .with_transport(transport, expected_peers, NullObserver::new());
+                .with_transport(transport, expected_peers, NullObserver::new(), FrozenClock);
 
             self.nodes.insert(node_id, new_node);
         }

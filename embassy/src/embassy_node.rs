@@ -20,7 +20,7 @@ use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
 use crate::embassy_observer::EmbassyObserver;
 use crate::embassy_state_machine::EmbassyStateMachine;
 use crate::embassy_storage::EmbassyStorage;
-use crate::embassy_timer::EmbassyTimer;
+use crate::embassy_timer::{EmbassyClock, EmbassyTimer};
 use crate::led_state::LedState;
 use crate::transport::async_transport::AsyncTransport;
 use crate::transport::embassy_transport::EmbassyTransport;
@@ -50,6 +50,7 @@ type EmbassyRaftNode = RaftNode<
     EmbassyTimer,
     EmbassyObserver<String, EmbassyLogEntryCollection>,
     EmbassyConfigChangeCollection,
+    EmbassyClock,
 >;
 
 /// Embassy Raft node - encapsulates all node state and behavior
@@ -101,7 +102,7 @@ impl<T: AsyncTransport> EmbassyNode<T> {
         let raft_node = RaftNodeBuilder::new(node_id, storage, state_machine)
             .with_election(election)
             .with_replication(replication)
-            .with_transport(transport.clone(), peers, observer);
+            .with_transport(transport.clone(), peers, observer, EmbassyClock);
 
         info!("Node {} initialized as Follower", node_id);
 

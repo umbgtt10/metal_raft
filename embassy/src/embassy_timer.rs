@@ -3,11 +3,25 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use embassy_time::{Duration, Instant};
+use raft_core::clock::Clock;
 use raft_core::timer_service::{ExpiredTimers, TimerKind, TimerService};
 
 const ELECTION_TIMEOUT_MIN_MS: u64 = 300;
 const ELECTION_TIMEOUT_MAX_MS: u64 = 600;
 const HEARTBEAT_TIMEOUT_MS: u64 = 100;
+
+/// Embassy clock implementation using embassy_time::Instant
+#[derive(Clone, Copy)]
+pub struct EmbassyClock;
+
+impl Clock for EmbassyClock {
+    type Instant = raft_core::clock::Instant;
+
+    fn now(&self) -> Self::Instant {
+        let embassy_now = Instant::now();
+        raft_core::clock::Instant::from_millis(embassy_now.as_millis())
+    }
+}
 
 /// Embassy-based timer implementation for Raft
 pub struct EmbassyTimer {

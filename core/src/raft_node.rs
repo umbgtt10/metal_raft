@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    clock::Clock,
     collections::{
         chunk_collection::ChunkCollection, config_change_collection::ConfigChangeCollection,
         configuration::Configuration, log_entry_collection::LogEntryCollection,
@@ -11,6 +12,7 @@ use crate::{
     components::{
         config_change_manager::ConfigChangeManager,
         election_manager::ElectionManager,
+        leader_lease::LeaderLease,
         log_replication_manager::LogReplicationManager,
         message_handler::{ClientError, MessageHandler, MessageHandlerContext},
         snapshot_manager::SnapshotManager,
@@ -25,7 +27,7 @@ use crate::{
     types::{LogIndex, NodeId, Term},
 };
 
-pub struct RaftNode<T, S, P, SM, C, L, CC, M, TS, O, CCC>
+pub struct RaftNode<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
 where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -38,6 +40,7 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     id: NodeId,
     role: NodeState,
@@ -52,11 +55,12 @@ where
     replication: LogReplicationManager<M>,
     config_manager: ConfigChangeManager<C, M>,
     snapshot_manager: SnapshotManager,
+    leader_lease: LeaderLease<CLK>,
 
     _phantom: core::marker::PhantomData<CCC>,
 }
 
-impl<T, S, P, SM, C, L, CC, M, TS, O, CCC> RaftNode<T, S, P, SM, C, L, CC, M, TS, O, CCC>
+impl<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK> RaftNode<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
 where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -69,6 +73,7 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     /// Internal constructor - use RaftNodeBuilder instead
     #[allow(clippy::too_many_arguments)]
@@ -82,6 +87,8 @@ where
         peers: C,
         observer: O,
         snapshot_threshold: LogIndex,
+        clock: CLK,
+        lease_duration_millis: u64,
     ) -> Self
     where
         SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
@@ -118,6 +125,7 @@ where
         }
         let config_manager = ConfigChangeManager::new(Configuration::new(all_members));
         let snapshot_manager = SnapshotManager::new(snapshot_threshold);
+        let leader_lease = LeaderLease::new(lease_duration_millis, clock);
 
         RaftNode {
             id,
@@ -131,6 +139,7 @@ where
             replication,
             config_manager,
             snapshot_manager,
+            leader_lease,
             _phantom: core::marker::PhantomData,
         }
     }

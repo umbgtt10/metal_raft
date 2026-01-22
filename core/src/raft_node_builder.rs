@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    clock::Clock,
     collections::{
         chunk_collection::ChunkCollection, config_change_collection::ConfigChangeCollection,
         log_entry_collection::LogEntryCollection, map_collection::MapCollection,
@@ -26,6 +27,7 @@ pub struct RaftNodeBuilder<S, SM, P> {
     storage: S,
     state_machine: SM,
     snapshot_threshold: LogIndex,
+    lease_duration_millis: u64,
     _phantom: core::marker::PhantomData<P>,
 }
 
@@ -40,7 +42,8 @@ where
             id,
             storage,
             state_machine,
-            snapshot_threshold: 10, // Default threshold
+            snapshot_threshold: 10,      // Default threshold
+            lease_duration_millis: 5000, // Default: 5 seconds
             _phantom: core::marker::PhantomData,
         }
     }
@@ -48,6 +51,12 @@ where
     /// Configure snapshot threshold (default: 10)
     pub fn with_snapshot_threshold(mut self, threshold: LogIndex) -> Self {
         self.snapshot_threshold = threshold;
+        self
+    }
+
+    /// Configure lease duration (default: 5000ms). Must be less than election timeout.
+    pub fn with_lease_duration(mut self, lease_duration_millis: u64) -> Self {
+        self.lease_duration_millis = lease_duration_millis;
         self
     }
 
@@ -68,6 +77,7 @@ where
             storage: self.storage,
             state_machine: self.state_machine,
             snapshot_threshold: self.snapshot_threshold,
+            lease_duration_millis: self.lease_duration_millis,
             election,
         }
     }
@@ -86,6 +96,7 @@ where
     storage: S,
     state_machine: SM,
     snapshot_threshold: LogIndex,
+    lease_duration_millis: u64,
     election: ElectionManager<C, TS>,
 }
 
@@ -117,6 +128,7 @@ where
             snapshot_threshold: self.snapshot_threshold,
             election: self.election,
             replication,
+            lease_duration_millis: self.lease_duration_millis,
         }
     }
 }
@@ -137,6 +149,7 @@ where
     snapshot_threshold: LogIndex,
     election: ElectionManager<C, TS>,
     replication: LogReplicationManager<M>,
+    lease_duration_millis: u64,
 }
 
 impl<S, SM, P, C, TS, M> RaftNodeBuilderWithReplication<S, SM, P, C, TS, M>
@@ -148,13 +161,20 @@ where
     TS: TimerService,
     M: MapCollection,
 {
-    /// Add transport, peers, and observer to complete construction
-    pub fn with_transport<T, L, CC, O, CCC>(
+    /// Configure lease duration (default: 5000ms). Must be less than election timeout.
+    pub fn with_lease_duration(mut self, lease_duration_millis: u64) -> Self {
+        self.lease_duration_millis = lease_duration_millis;
+        self
+    }
+
+    /// Add transport, peers, observer, and clock to complete construction
+    pub fn with_transport<T, L, CC, O, CCC, CLK>(
         self,
         transport: T,
         peers: C,
         observer: O,
-    ) -> RaftNode<T, S, P, SM, C, L, CC, M, TS, O, CCC>
+        clock: CLK,
+    ) -> RaftNode<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
     where
         P: Clone,
         T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -164,6 +184,7 @@ where
         S: Storage<Payload = P, LogEntryCollection = L, SnapshotChunk = CC> + Clone,
         SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
         O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
+        CLK: Clock,
     {
         RaftNode::new_from_builder(
             self.id,
@@ -175,6 +196,8 @@ where
             peers,
             observer,
             self.snapshot_threshold,
+            clock,
+            self.lease_duration_millis,
         )
     }
 }
