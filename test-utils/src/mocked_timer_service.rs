@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+use raft_core::clock::{Clock, Instant};
 use raft_core::timer_service::{ExpiredTimers, TimerKind, TimerService};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -19,7 +20,7 @@ impl MockClock {
         }
     }
 
-    pub fn now(&self) -> u64 {
+    pub fn now_millis(&self) -> u64 {
         *self.current_time.borrow()
     }
 
@@ -31,6 +32,14 @@ impl MockClock {
 impl Default for MockClock {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Clock for MockClock {
+    type Instant = Instant;
+
+    fn now(&self) -> Self::Instant {
+        Instant::from_millis(*self.current_time.borrow())
     }
 }
 
@@ -77,7 +86,7 @@ impl MockTimerService {
         // Use a better mixing function for deterministic randomness
         let seed = self
             .clock
-            .now()
+            .now_millis()
             .wrapping_mul(31)
             .wrapping_add(self.node_id.wrapping_mul(97));
 
@@ -93,11 +102,11 @@ impl MockTimerService {
 impl TimerService for MockTimerService {
     fn reset_election_timer(&mut self) {
         let timeout = self.random_election_timeout();
-        self.election_deadline = Some(self.clock.now() + timeout);
+        self.election_deadline = Some(self.clock.now_millis() + timeout);
     }
 
     fn reset_heartbeat_timer(&mut self) {
-        self.heartbeat_deadline = Some(self.clock.now() + self.heartbeat_interval);
+        self.heartbeat_deadline = Some(self.clock.now_millis() + self.heartbeat_interval);
     }
 
     fn stop_timers(&mut self) {
@@ -107,7 +116,7 @@ impl TimerService for MockTimerService {
 
     fn check_expired(&self) -> ExpiredTimers {
         let mut expired = ExpiredTimers::new();
-        let now = self.clock.now();
+        let now = self.clock.now_millis();
 
         if let Some(deadline) = self.election_deadline {
             if now >= deadline {

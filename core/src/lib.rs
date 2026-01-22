@@ -6,6 +6,7 @@
 
 extern crate alloc;
 
+pub mod clock;
 pub mod collections;
 pub mod components;
 pub mod event;
