@@ -647,7 +647,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "raft-embassy-sim"
+name = "raft-embassy"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
@@ -672,22 +672,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "raft-sim"
-version = "0.1.0"
-dependencies = [
- "indexmap",
- "raft-core",
- "raft-test-utils",
- "rand",
- "serde_json",
-]
-
-[[package]]
 name = "raft-test-utils"
 version = "0.1.0"
 dependencies = [
  "indexmap",
  "raft-core",
+ "rand",
+ "serde_json",
+]
+
+[[package]]
+name = "raft-validation"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "raft-core",
+ "raft-test-utils",
  "rand",
  "serde_json",
 ]

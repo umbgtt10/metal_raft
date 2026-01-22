@@ -57,7 +57,7 @@ This design philosophy enables the same consensus logic to run unchanged across:
 ### 🔄 Validation Status
 
 The core has been validated through:
-- ✅ **Embassy-Sim**: 5-node cluster running on QEMU with UDP transport
+- ✅ **Embassy**: 5-node cluster running on QEMU with UDP transport
 - ✅ **Raft-Sim**: Deterministic test harness with adversarial network conditions
 - ✅ **Client Request Handling**: Full write-path with commit acknowledgments
 - ✅ **Leader Re-election**: Recovery from failures and partitions
@@ -384,7 +384,7 @@ The current implementation covers the core Raft protocol. The following advanced
 - ❌ No heartbeat acknowledgment tracking (needed for lease mechanism)
 - ❌ No read index tracking (leader must record commit index at read time)
 - ❌ No read request queuing (reads should wait for commit advancement)
-- ❌ `ClientRequest` in embassy-sim is write-only
+- ❌ `ClientRequest` in embassy is write-only
 
 **Required Changes:**
 
@@ -429,7 +429,7 @@ The current implementation covers the core Raft protocol. The following advanced
 ## Recommended Implementation Order
 
 ### Phase 1: Log Compaction + Snapshots ✅
-**Status**: ✅ **COMPLETE**  
+**Status**: ✅ **COMPLETE**
 110+ tests passing across 33 test files
 
 **Completed Features:**
@@ -459,14 +459,14 @@ The current implementation covers the core Raft protocol. The following advanced
 ### Phase 2: Pre-Vote Protocol ✅
 **Status**: ✅ **COMPLETE**
 
-**Implementation**: Fully integrated with 6 dedicated tests  
-**Problem Solved**: Prevents disruptive elections from partitioned nodes  
+**Implementation**: Fully integrated with 6 dedicated tests
+**Problem Solved**: Prevents disruptive elections from partitioned nodes
 **Impact**: Stable leaders not disrupted by isolated nodes with inflated terms
 
 ---
 
 ### Phase 3: Dynamic Membership - Joint Consensus Upgrade
-**Priority**: High  
+**Priority**: High
 **Status**: 70% foundation complete, needs Joint Consensus logic
 
 **Rationale:**
@@ -494,7 +494,7 @@ The current implementation covers the core Raft protocol. The following advanced
 ---
 
 ### Phase 4: Linearizable Reads
-**Priority**: Medium  
+**Priority**: Medium
 **Status**: Planning phase
 
 **Rationale:**

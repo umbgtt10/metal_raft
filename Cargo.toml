@@ -2,8 +2,8 @@
 resolver = "2"
 members = [
     "core",
-    "sim",
-    "embassy-sim",
+    "validation",
+    "embassy",
     "test-utils",
 ]
 
@@ -25,5 +25,5 @@ tonic-build = "0.14.2"
 tonic-prost-build = "0.14.2"
 
 raft-core = { path = "core" }
-raft-sim = { path = "sim" }
+raft-validation = { path = "validation" }
 raft-test-utils = { path = "test-utils" }

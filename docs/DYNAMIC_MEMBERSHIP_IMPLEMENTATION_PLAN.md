@@ -1,6 +1,6 @@
 # Dynamic Membership Implementation Plan
 
-**Current Status:** Phase A (Single-Server Changes) ~70% Complete  
+**Current Status:** Phase A (Single-Server Changes) ~70% Complete
 **Remaining Work:** Phase B (Joint Consensus Upgrade)
 
 **Total Estimated Effort:** 2-3 weeks for Joint Consensus
@@ -37,7 +37,7 @@ Tasks 1.1, 1.2, and significant parts of 1.3 from Week 1 are already implemented
 1. ✅ **Configuration Entry Types** - [core/src/log_entry.rs](../core/src/log_entry.rs)
    - `EntryType::ConfigChange(ConfigurationChange)` enum
    - `ConfigurationChange::AddServer` and `RemoveServer` variants
-   - Fully serialized in embassy-sim UDP transport
+   - Fully serialized in embassy UDP transport
 
 2. ✅ **Configuration Tracking** - [core/src/collections/configuration.rs](../core/src/collections/configuration.rs)
    - `Configuration<C: NodeCollection>` struct
@@ -99,7 +99,7 @@ pub struct LogEntry<P> {
 - Update `LogEntry` structure throughout codebase
 - Keep `StateMachine::apply()` for commands only; handle config changes inside `RaftNode` (no trait change)
 - Update serialization in:
-  - `embassy-sim/src/transport/udp/serde_raft_message.rs`
+  - `embassy/src/transport/udp/serde_raft_message.rs`
   - Any Postcard/Protobuf implementations
 - Update all tests to use new `LogEntry` structure
 

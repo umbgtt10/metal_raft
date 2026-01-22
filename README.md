@@ -64,8 +64,8 @@ This repository is intentionally structured to separate **algorithmic correctnes
 ```
 metal_raft/
   core/               # no_std Raft algorithm (frozen logic)
-  sim/                # std-based deterministic simulator & test harness
-  embassy-sim/        # no_std + Embassy realization (embedded target)
+  validation/         # std-based deterministic simulator & test harness
+  embassy/            # no_std + Embassy realization (embedded target)
   docs/               # Architecture Decision Records and implementation plans
 ```
 
@@ -116,7 +116,7 @@ Exit criteria (all met):
 * ✅ Monotonic commit index
 * ✅ Correct recovery from partitions
 
-**Status**: Complete. 110+ tests passing across 33 test files. Validated in Embassy-sim with UDP transport.
+**Status**: Complete. 110+ tests passing across 33 test files. Validated in Embassy with UDP transport.
 
 ### Phase 1 — Log Compaction & Crash Recovery ✅
 
@@ -132,7 +132,7 @@ Exit criteria (all met):
 * ✅ Correct recovery after crash with snapshot
 * ✅ Memory bounded even with high write load
 
-**Status**: Complete. Validated in simulation and Embassy-sim.
+**Status**: Complete. Validated in simulation and Embassy.
 
 ---
 
@@ -169,13 +169,13 @@ In standard Raft, when a node's election timer fires, it immediately:
 - Majority of pre-votes required to proceed to real election
 - Transparent to rest of system (no API changes)
 
-**Status**: Fully implemented and tested. 6 dedicated pre-vote tests. Works across all environments (sim, embassy-sim).
+**Status**: Fully implemented and tested. 6 dedicated pre-vote tests. Works across all environments (validation, embassy).
 
 ---
 
 ### Phase 2 — Simulation & Proof ✅
 
-* Deterministic cluster simulator (`raft-sim`)
+* Deterministic cluster simulator (`raft-validation`)
 * Two test modes:
   * **Timeless**: Fully deterministic, no wall-clock time, total message control
   * **Timefull**: Wall-clock based, randomized timeouts, realistic timing
@@ -204,7 +204,7 @@ Purpose:
 
 ### Phase 3 — `no_std + Embassy` ✅
 
-* Embedded-compatible realization (`raft-embassy-sim`)
+* Embedded-compatible realization (`raft-embassy`)
 * Small, static clusters (3-5 nodes)
 * Embassy executor and timers
 * UDP transport over simulated network
@@ -217,7 +217,7 @@ Purpose:
 * Demonstrate near bare-metal execution
 * Prove portability without logic changes
 
-**Status**: Complete. Validated with UDP transport in Embassy runtime. Same Raft core logic runs unchanged in both simulation and Embassy environments.
+**Status**: Complete. Validated with UDP transport in Embassy runtime. Same Raft core logic runs unchanged in both validation and Embassy environments.
 
 ---
 
@@ -344,8 +344,8 @@ This project exists to demonstrate:
   - Wall-clock test harness (timefull mode)
   - Comprehensive coverage: elections, replication, snapshots, partitions, recovery
 - ✅ **Phase 3 — `no_std + Embassy`**: Complete
-  - Embassy-sim with UDP transport validated
-  - Same core logic runs in both simulation and Embassy
+  - Embassy with UDP transport validated
+  - Same core logic runs in both validation and Embassy
   - Abstraction boundaries proven in most constrained environment
 - 🔄 **Phase 4 — Raft Advanced Features**: In Progress (70% complete)
   - ✅ Single-Server configuration changes (foundation implemented)
