@@ -14,12 +14,26 @@ use crate::types::NodeId;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Configuration<C: NodeCollection> {
     pub members: C,
+    /// Whether the local node is included in the configuration.
+    /// This is false after the node has been removed from the cluster.
+    include_self: bool,
 }
 
 impl<C: NodeCollection> Configuration<C> {
     /// Create a new configuration with the given members
     pub fn new(members: C) -> Self {
-        Self { members }
+        Self {
+            members,
+            include_self: true,
+        }
+    }
+
+    /// Create a configuration that excludes the local node
+    pub fn without_self(members: C) -> Self {
+        Self {
+            members,
+            include_self: false,
+        }
     }
 
     /// Check if a node is a member of this configuration
@@ -27,9 +41,13 @@ impl<C: NodeCollection> Configuration<C> {
         self.members.iter().any(|id| id == node_id)
     }
 
-    /// Get the total number of nodes in this configuration (including self)
+    /// Get the total number of nodes in this configuration (including self if applicable)
     pub fn size(&self) -> usize {
-        self.members.len() + 1
+        if self.include_self {
+            self.members.len() + 1
+        } else {
+            self.members.len()
+        }
     }
 
     /// Calculate the quorum size (simple majority)

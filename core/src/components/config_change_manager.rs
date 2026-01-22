@@ -186,18 +186,20 @@ where
                             let _ = new_members.push(existing_id);
                         }
                     }
-                    self.config = Configuration::new(new_members);
 
-                    // Clean up replication state if we're leader
-                    if *current_role == NodeState::Leader {
-                        replication.next_index_mut().remove(*node_id);
-                        replication.match_index_mut().remove(*node_id);
-                    }
-
-                    // If we removed ourselves, step down
+                    // If we removed ourselves, create config that excludes self
                     if *node_id == self_id {
+                        self.config = Configuration::without_self(new_members);
                         *current_role = NodeState::Follower;
                         // Note: Observer notification for role change should be handled by caller
+                    } else {
+                        self.config = Configuration::new(new_members);
+
+                        // Clean up replication state if we're leader
+                        if *current_role == NodeState::Leader {
+                            replication.next_index_mut().remove(*node_id);
+                            replication.match_index_mut().remove(*node_id);
+                        }
                     }
                 }
             }

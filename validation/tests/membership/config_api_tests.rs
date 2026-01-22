@@ -657,3 +657,115 @@ fn test_config_change_with_leader_crash() {
     );
     assert!(cluster.get_node(1).config().contains(6));
 }
+
+#[test]
+fn test_leader_removes_self_and_steps_down() {
+    let mut cluster = TimelessTestCluster::with_nodes(3);
+
+    // Elect node 1 as leader
+    cluster
+        .get_node_mut(1)
+        .on_event(Event::TimerFired(TimerKind::Election));
+    cluster.deliver_messages();
+
+    // Verify node 1 is the leader
+    assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
+
+    // Leader removes itself
+    cluster
+        .get_node_mut(1)
+        .on_event(Event::ConfigChange(ConfigurationChange::RemoveServer(1)));
+    let config_index = cluster.get_node(1).storage().last_log_index();
+
+    // Replicate to followers
+    cluster.deliver_messages();
+
+    // Verify the entry is in all nodes' logs
+    for node_id in [1, 2, 3] {
+        let node = cluster.get_node(node_id);
+        assert!(
+            node.storage().last_log_index() >= config_index,
+            "Node {} should have config entry",
+            node_id
+        );
+    }
+
+    // Node 1 should have committed and stepped down
+    assert!(
+        cluster.get_node(1).is_committed(config_index),
+        "Node 1 should have committed config change"
+    );
+    assert_eq!(
+        *cluster.get_node(1).role(),
+        NodeState::Follower,
+        "Node 1 should have stepped down after removing itself"
+    );
+
+    // Node 1's config should reflect removal
+    assert_eq!(
+        cluster.get_node(1).config().size(),
+        2,
+        "Node 1 should have 2 nodes in config after self-removal"
+    );
+
+    // Trigger new election among remaining nodes
+    cluster
+        .get_node_mut(2)
+        .on_event(Event::TimerFired(TimerKind::Election));
+    cluster.deliver_messages();
+
+    // Find the new leader
+    let new_leader = [2, 3]
+        .iter()
+        .find(|&&node_id| *cluster.get_node(node_id).role() == NodeState::Leader)
+        .copied()
+        .expect("Should have elected a new leader from remaining nodes");
+
+    // New leader sends a client command to commit entries from its term
+    // This triggers commit of the RemoveServer entry (Raft safety: can only commit own term)
+    cluster
+        .get_node_mut(new_leader)
+        .on_event(Event::ClientCommand("trigger_commit".to_string()));
+    cluster.deliver_messages();
+
+    // Propagate commit index to all nodes
+    cluster
+        .get_node_mut(new_leader)
+        .on_event(Event::TimerFired(TimerKind::Heartbeat));
+    cluster.deliver_messages();
+
+    // Verify configuration was updated on all nodes
+    for node_id in [1, 2, 3] {
+        let node = cluster.get_node(node_id);
+        assert_eq!(
+            node.config().size(),
+            2,
+            "Node {} should have 2 nodes in config",
+            node_id
+        );
+        assert!(
+            !node.config().contains(1),
+            "Node {} config should not contain removed node 1",
+            node_id
+        );
+    }
+
+    // Verify cluster can still make progress
+    cluster
+        .get_node_mut(new_leader)
+        .on_event(Event::ClientCommand("after_leader_removal".to_string()));
+    cluster.deliver_messages();
+
+    let final_index = cluster.get_node(new_leader).storage().last_log_index();
+    assert!(
+        cluster.get_node(new_leader).is_committed(final_index),
+        "Cluster should continue operating after leader removes itself"
+    );
+
+    // Verify old leader (node 1) remains a Follower
+    assert_eq!(
+        *cluster.get_node(1).role(),
+        NodeState::Follower,
+        "Old leader should remain Follower"
+    );
+}
