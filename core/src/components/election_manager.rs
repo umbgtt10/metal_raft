@@ -181,6 +181,7 @@ where
         if term > *current_term {
             *current_term = term;
             storage.set_current_term(term);
+            storage.set_voted_for(None);
         }
 
         // Term validation is handled in the message handler

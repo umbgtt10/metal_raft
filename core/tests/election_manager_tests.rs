@@ -273,9 +273,10 @@ fn test_safety_update_term_from_higher_request() {
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
+    storage.set_voted_for(Some(3));
     let mut current_term = 1;
 
-    election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
+    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         5, // higher term
         7,
         0,
@@ -286,6 +287,13 @@ fn test_safety_update_term_from_higher_request() {
 
     assert_eq!(current_term, 5);
     assert_eq!(storage.current_term(), 5);
+    match response {
+        RaftMsg::RequestVoteResponse { vote_granted, .. } => {
+            assert!(vote_granted);
+            assert_eq!(storage.voted_for(), Some(7));
+        }
+        _ => panic!("Expected RequestVoteResponse"),
+    }
 }
 
 #[test]
