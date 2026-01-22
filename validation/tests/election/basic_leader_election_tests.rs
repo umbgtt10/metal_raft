@@ -9,11 +9,11 @@ use raft_core::{
     raft_messages::RaftMsg,
     timer_service::TimerKind,
 };
-use raft_validation::timeless_test_cluster::TimelessTestCluster;
 use raft_test_utils::{
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_node_collection::InMemoryNodeCollection,
 };
+use raft_validation::timeless_test_cluster::TimelessTestCluster;
 
 #[test]
 fn test_liveness_empty_cluster() {

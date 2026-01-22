@@ -3,8 +3,8 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use raft_core::{event::Event, node_state::NodeState, storage::Storage, timer_service::TimerKind};
-use raft_validation::timeless_test_cluster::TimelessTestCluster;
 use raft_test_utils::in_memory_storage::InMemoryStorage;
+use raft_validation::timeless_test_cluster::TimelessTestCluster;
 
 #[test]
 fn test_safety_election_log_restriction() {

@@ -9,8 +9,8 @@ use raft_core::{
     storage::Storage,
     timer_service::TimerKind,
 };
-use raft_validation::timeless_test_cluster::TimelessTestCluster;
 use raft_test_utils::in_memory_storage::InMemoryStorage;
+use raft_validation::timeless_test_cluster::TimelessTestCluster;
 
 /// Test: Higher Term wins against Longer Log
 ///

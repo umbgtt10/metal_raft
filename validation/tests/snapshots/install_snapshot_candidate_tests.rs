@@ -5,8 +5,8 @@
 use raft_core::{
     event::Event, node_state::NodeState, raft_messages::RaftMsg, timer_service::TimerKind,
 };
-use raft_validation::timeless_test_cluster::TimelessTestCluster;
 use raft_test_utils::in_memory_chunk_collection::InMemoryChunkCollection;
+use raft_validation::timeless_test_cluster::TimelessTestCluster;
 
 /// Test that a candidate receiving InstallSnapshot at the current term steps down
 #[test]
