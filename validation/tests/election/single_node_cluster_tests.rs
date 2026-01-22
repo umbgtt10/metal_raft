@@ -13,12 +13,15 @@ fn test_liveness_single_node_cluster() {
     // Arrange - 1 Node Cluster
     let mut cluster = TimelessTestCluster::with_nodes(1);
 
-    // Act - Start election
+    // Act - Start election with pre-vote
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
 
-    // Deliver messages (self-vote)
+    // Deliver pre-vote messages (to self)
+    cluster.deliver_messages();
+
+    // Pre-vote succeeds, start real election
     cluster.deliver_messages();
 
     // Assert - Should become leader immediately (majority of 1 is 1)

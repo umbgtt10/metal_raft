@@ -19,5 +19,6 @@ pub trait MapCollection {
         leader_last_index: LogIndex,
         config: &Configuration<C>,
         catching_up_servers: &Self,
+        leader_id: NodeId,
     ) -> Option<LogIndex>;
 }

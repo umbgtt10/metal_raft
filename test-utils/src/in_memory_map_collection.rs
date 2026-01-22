@@ -51,24 +51,30 @@ impl MapCollection for InMemoryMapCollection {
         leader_last_index: LogIndex,
         config: &Configuration<C>,
         catching_up_servers: &Self,
+        leader_id: NodeId,
     ) -> Option<LogIndex> {
         let mut indices: Vec<LogIndex> = Vec::new();
 
         // Add leader's own index
         indices.push(leader_last_index);
 
-        // Add match_index values for voting members only (exclude catching-up servers)
+        // Add match_index values for voting members only (exclude catching-up servers and leader)
         for member in config.members.iter() {
+            // Skip leader (already added)
+            if member == leader_id {
+                continue;
+            }
+
             // Skip catching-up servers
             if catching_up_servers.get(member).is_some() {
                 continue;
             }
 
             // Get match_index for this member
+            // If not in match_index, assume 0 (unresponsive peer)
             if let Some(match_idx) = self.get(member) {
                 indices.push(match_idx);
             } else {
-                // Not yet in match_index map (shouldn't happen for valid config members)
                 indices.push(0);
             }
         }

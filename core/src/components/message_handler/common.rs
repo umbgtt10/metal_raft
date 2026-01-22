@@ -56,9 +56,9 @@ pub fn broadcast<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
 {
-    // Collect peer IDs first to avoid borrowing issues
+    // Collect peer IDs first to avoid borrowing issues (excluding self)
     let mut ids = C::new();
-    for peer in ctx.config_manager.config().members.iter() {
+    for peer in ctx.config_manager.config().peers(*ctx.id) {
         ids.push(peer).ok();
     }
 

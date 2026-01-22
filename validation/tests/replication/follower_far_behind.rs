@@ -49,7 +49,19 @@ fn test_liveness_follower_far_behind() {
     cluster.add_node_with_storage(2, storage_node2);
     cluster.connect_peers();
 
-    assert_eq!(cluster.get_node(1).storage().last_log_index(), 5);
+    // Node 1 was reset to Follower by connect_peers re-creation. Force it to be Leader.
+    cluster
+        .get_node_mut(1)
+        .on_event(Event::TimerFired(TimerKind::Election));
+    cluster.deliver_messages();
+
+    // Send a new command to commit entries from previous term
+    cluster
+        .get_node_mut(1)
+        .on_event(Event::ClientCommand("noop".to_string()));
+    cluster.deliver_messages();
+
+    assert_eq!(cluster.get_node(1).storage().last_log_index(), 6);
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 2);
 
     // Leader sends heartbeats - follower should catch up
@@ -59,13 +71,13 @@ fn test_liveness_follower_far_behind() {
             .on_event(Event::TimerFired(TimerKind::Heartbeat));
         cluster.deliver_messages();
 
-        if cluster.get_node(2).storage().last_log_index() == 5 {
+        if cluster.get_node(2).storage().last_log_index() == 6 {
             break;
         }
     }
 
-    // Node 2 should now have all 5 entries
-    assert_eq!(cluster.get_node(2).storage().last_log_index(), 5);
+    // Node 2 should now have all 6 entries
+    assert_eq!(cluster.get_node(2).storage().last_log_index(), 6);
 
     for i in 1..=5 {
         let entry = cluster.get_node(2).storage().get_entry(i).unwrap();
@@ -75,6 +87,6 @@ fn test_liveness_follower_far_behind() {
     }
 
     // Verify commit and state machine
-    assert_eq!(cluster.get_node(2).commit_index(), 5);
+    assert_eq!(cluster.get_node(2).commit_index(), 6);
     assert_eq!(cluster.get_node(2).state_machine().get("x"), Some("5"));
 }

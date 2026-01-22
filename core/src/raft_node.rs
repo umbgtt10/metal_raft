@@ -110,7 +110,13 @@ where
         // Start election timer for initial Follower state
         election.timer_service_mut().reset_election_timer();
 
-        let config_manager = ConfigChangeManager::new(Configuration::new(peers));
+        // Build configuration including self
+        let mut all_members = C::new();
+        let _ = all_members.push(id);
+        for peer_id in peers.iter() {
+            let _ = all_members.push(peer_id);
+        }
+        let config_manager = ConfigChangeManager::new(Configuration::new(all_members));
         let snapshot_manager = SnapshotManager::new(snapshot_threshold);
 
         RaftNode {

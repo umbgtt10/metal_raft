@@ -9,10 +9,7 @@ use raft_core::{
     raft_messages::RaftMsg,
     timer_service::TimerKind,
 };
-use raft_test_utils::{
-    in_memory_log_entry_collection::InMemoryLogEntryCollection,
-    in_memory_node_collection::InMemoryNodeCollection,
-};
+use raft_test_utils::in_memory_log_entry_collection::InMemoryLogEntryCollection;
 use raft_validation::timeless_test_cluster::TimelessTestCluster;
 
 #[test]
@@ -47,31 +44,23 @@ fn test_liveness_connection() {
     cluster.add_node(3);
     cluster.connect_peers();
 
-    let expected_peers_1 = {
-        let mut peers = InMemoryNodeCollection::new();
-        peers.push(2).unwrap();
-        peers.push(3).unwrap();
-        peers
-    };
+    // Assert - all nodes should have the same configuration (all members)
+    // Order may vary, so check size and membership instead of exact equality
+    assert_eq!(cluster.get_node(1).peers().unwrap().len(), 3);
+    assert_eq!(cluster.get_node(2).peers().unwrap().len(), 3);
+    assert_eq!(cluster.get_node(3).peers().unwrap().len(), 3);
 
-    let expected_peers_2 = {
-        let mut peers = InMemoryNodeCollection::new();
-        peers.push(1).unwrap();
-        peers.push(3).unwrap();
-        peers
-    };
-
-    let expected_peers_3 = {
-        let mut peers = InMemoryNodeCollection::new();
-        peers.push(1).unwrap();
-        peers.push(2).unwrap();
-        peers
-    };
-
-    // Assert
-    assert_eq!(*cluster.get_node(1).peers().unwrap(), expected_peers_1);
-    assert_eq!(*cluster.get_node(2).peers().unwrap(), expected_peers_2);
-    assert_eq!(*cluster.get_node(3).peers().unwrap(), expected_peers_3);
+    // Verify all nodes are in each configuration
+    for node_id in [1, 2, 3] {
+        for member in [1, 2, 3] {
+            assert!(
+                cluster.get_node(node_id).config().contains(member),
+                "Node {} config should contain member {}",
+                node_id,
+                member
+            );
+        }
+    }
 }
 
 #[test]

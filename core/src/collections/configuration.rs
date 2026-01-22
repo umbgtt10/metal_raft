@@ -13,27 +13,14 @@ use crate::types::NodeId;
 /// Represents the current cluster configuration
 #[derive(Clone, Debug, PartialEq)]
 pub struct Configuration<C: NodeCollection> {
+    /// All nodes in the cluster, including the local node
     pub members: C,
-    /// Whether the local node is included in the configuration.
-    /// This is false after the node has been removed from the cluster.
-    include_self: bool,
 }
 
 impl<C: NodeCollection> Configuration<C> {
     /// Create a new configuration with the given members
     pub fn new(members: C) -> Self {
-        Self {
-            members,
-            include_self: true,
-        }
-    }
-
-    /// Create a configuration that excludes the local node
-    pub fn without_self(members: C) -> Self {
-        Self {
-            members,
-            include_self: false,
-        }
+        Self { members }
     }
 
     /// Check if a node is a member of this configuration
@@ -41,13 +28,9 @@ impl<C: NodeCollection> Configuration<C> {
         self.members.iter().any(|id| id == node_id)
     }
 
-    /// Get the total number of nodes in this configuration (including self if applicable)
+    /// Get the total number of nodes in this configuration
     pub fn size(&self) -> usize {
-        if self.include_self {
-            self.members.len() + 1
-        } else {
-            self.members.len()
-        }
+        self.members.len()
     }
 
     /// Calculate the quorum size (simple majority)
@@ -66,8 +49,13 @@ impl<C: NodeCollection> Configuration<C> {
         count >= self.quorum_size()
     }
 
-    /// Get an iterator over members
+    /// Get an iterator over all members (including self)
     pub fn iter(&self) -> impl Iterator<Item = NodeId> + '_ {
         self.members.iter()
+    }
+
+    /// Get an iterator over peer members (excluding the specified node_id)
+    pub fn peers(&self, self_id: NodeId) -> impl Iterator<Item = NodeId> + '_ {
+        self.members.iter().filter(move |&id| id != self_id)
     }
 }

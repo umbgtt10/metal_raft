@@ -219,8 +219,8 @@ pub fn start_election<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
 
     common::broadcast(ctx, vote_request);
 
-    // If we have no peers, we already have majority (1 of 1) - become leader immediately
-    if ctx.config_manager.config().members.len() == 0 {
+    // If we're the only member (no peers), we already have majority - become leader immediately
+    if ctx.config_manager.config().members.len() <= 1 {
         become_leader(ctx);
     }
 }
@@ -280,8 +280,8 @@ pub fn handle_election_timer<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
         ctx.observer.election_timeout(*ctx.id, *ctx.current_term);
         start_pre_vote(ctx);
 
-        // If we have no peers, immediately start real election (we're the only node)
-        if ctx.config_manager.config().members.len() == 0 {
+        // If we have no peers (empty config or single-node), immediately start real election
+        if ctx.config_manager.config().members.len() <= 1 {
             start_election(ctx);
         }
     }

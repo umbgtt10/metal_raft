@@ -197,6 +197,7 @@ where
     }
 
     /// Handle AppendEntries response from follower
+    #[allow(clippy::too_many_arguments)]
     pub fn handle_append_entries_response<P, L, S, SM, C, CC>(
         &mut self,
         from: NodeId,
@@ -205,6 +206,7 @@ where
         storage: &S,
         state_machine: &mut SM,
         config: &Configuration<C>,
+        leader_id: NodeId,
     ) -> CC
     where
         S: Storage<Payload = P, LogEntryCollection = L>,
@@ -222,7 +224,7 @@ where
                 // Check if this server has caught up and can participate in quorum
                 self.check_and_promote_caught_up_server(from);
 
-                return self.advance_commit_index(storage, state_machine, config);
+                return self.advance_commit_index(storage, state_machine, config, leader_id);
             }
         } else {
             // Decrement next_index on failure
@@ -337,6 +339,7 @@ where
         storage: &S,
         state_machine: &mut SM,
         config: &Configuration<C>,
+        leader_id: NodeId,
     ) -> CC
     where
         S: Storage<Payload = P, LogEntryCollection = L>,
@@ -346,10 +349,12 @@ where
     {
         let leader_index = storage.last_log_index();
 
-        if let Some(new_commit) =
-            self.match_index
-                .compute_median(leader_index, config, &self.catching_up_servers)
-        {
+        if let Some(new_commit) = self.match_index.compute_median(
+            leader_index,
+            config,
+            &self.catching_up_servers,
+            leader_id,
+        ) {
             if new_commit > self.commit_index {
                 if let Some(entry) = storage.get_entry(new_commit) {
                     if entry.term == storage.current_term() {

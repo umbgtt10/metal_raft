@@ -120,12 +120,13 @@ where
     ctx.storage.append_entries(&[entry]);
     let index = ctx.storage.last_log_index();
 
-    // If we are a single node cluster, we can advance commit index immediately
-    if ctx.config_manager.config().members.len() == 0 {
+    // If we are a single node cluster (only member is self) or empty config, advance commit immediately
+    if ctx.config_manager.config().members.len() <= 1 {
         let config_changes: CCC = ctx.replication.advance_commit_index(
             ctx.storage,
             ctx.state_machine,
             ctx.config_manager.config(),
+            *ctx.id,
         );
         common::apply_config_changes(ctx, config_changes);
     }
@@ -163,12 +164,13 @@ where
     ctx.storage.append_entries(&[entry]);
     let index = ctx.storage.last_log_index();
 
-    // If we are a single node cluster, we can advance commit index immediately
-    if ctx.config_manager.config().members.len() == 0 {
+    // If we are a single node cluster (only member is self) or empty config, advance commit immediately
+    if ctx.config_manager.config().members.len() <= 1 {
         let config_changes: CCC = ctx.replication.advance_commit_index(
             ctx.storage,
             ctx.state_machine,
             ctx.config_manager.config(),
+            *ctx.id,
         );
         common::apply_config_changes(ctx, config_changes);
     }

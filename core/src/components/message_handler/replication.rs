@@ -98,6 +98,7 @@ pub fn handle_append_entries_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
             ctx.storage,
             ctx.state_machine,
             ctx.config_manager.config(),
+            *ctx.id,
         );
         let new_commit_index = ctx.replication.commit_index();
 
@@ -227,9 +228,9 @@ pub fn send_append_entries_to_followers<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
 {
-    // Collect peer IDs first to avoid borrowing issues
+    // Collect peer IDs first to avoid borrowing issues (excluding self)
     let mut ids = C::new();
-    for peer in ctx.config_manager.config().members.iter() {
+    for peer in ctx.config_manager.config().peers(*ctx.id) {
         ids.push(peer).ok();
     }
 

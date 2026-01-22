@@ -131,6 +131,9 @@ fn test_safety_election_timer_starts_without_messages() {
     // Advance time past election timeout
     cluster.advance_time(250);
 
+    // Advance time again to process pre-vote and real election
+    cluster.advance_time(10);
+
     // With pre-vote: isolated node sends pre-vote to itself (no peers)
     // It will grant itself a pre-vote and start real election, becoming Candidate
     // Since it has no peers, it immediately wins (majority of 1 = 1)

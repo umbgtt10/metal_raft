@@ -402,6 +402,7 @@ fn test_liveness_update_next_index_on_success() {
             &storage,
             &mut state_machine,
             &config,
+            1,
         );
 
     assert_eq!(
@@ -444,6 +445,7 @@ fn test_liveness_decrement_next_index_on_failure() {
             &storage,
             &mut state_machine,
             &config,
+            1,
         );
 
     assert_eq!(
@@ -497,11 +499,11 @@ fn test_liveness_commit_index_advancement_on_majority() {
     // Leader (self) has all 5 entries
     // Node 2 confirms up to index 3
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 3, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(2, true, 3, &storage, &mut state_machine, &config, 1);
 
     // Node 3 confirms up to index 3
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(3, true, 3, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(3, true, 3, &storage, &mut state_machine, &config, 1);
 
     // Now 3 out of 5 nodes (including leader) have entries up to index 3
     // Should advance commit_index to 3
@@ -513,7 +515,7 @@ fn test_liveness_commit_index_advancement_on_majority() {
 
     // Node 4 confirms up to index 5
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(4, true, 5, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(4, true, 5, &storage, &mut state_machine, &config, 1);
 
     // Now 3 out of 5 have up to index 5 (leader, node 4, and we need one more)
     // commit_index should still be 3
@@ -525,7 +527,7 @@ fn test_liveness_commit_index_advancement_on_majority() {
 
     // Node 5 confirms up to index 4
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(5, true, 4, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(5, true, 4, &storage, &mut state_machine, &config, 1);
 
     // Now we have: leader(5), node2(3), node3(3), node4(5), node5(4)
     // Majority (3/5) at index 4: leader, node4, node5
@@ -569,9 +571,9 @@ fn test_safety_only_commit_current_term_entries() {
 
     // Node 2 and 3 both have up to index 2 (old term entries)
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 2, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(2, true, 2, &storage, &mut state_machine, &config, 1);
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(3, true, 2, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(3, true, 2, &storage, &mut state_machine, &config, 1);
 
     // Even though majority has index 2, we shouldn't commit old term entries directly
     // (Raft safety: only commit entries from current term via replication)
@@ -579,7 +581,7 @@ fn test_safety_only_commit_current_term_entries() {
 
     // Let's verify by replicating index 3
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 3, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(2, true, 3, &storage, &mut state_machine, &config, 1);
 
     // Now majority has index 3 (current term), so commit_index should be 3
     assert_eq!(replication.commit_index(), 3);
@@ -616,6 +618,7 @@ fn test_safety_ignore_responses_from_old_term() {
             &storage,
             &mut state_machine,
             &config,
+            1,
         );
 
     // next_index and match_index should be updated (note: the API doesn't check term in response)
@@ -799,7 +802,7 @@ fn test_liveness_three_node_cluster_majority() {
 
     // Only node 2 confirms (1 follower + 1 leader = 2/3 = majority)
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 2, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(2, true, 2, &storage, &mut state_machine, &config, 1);
 
     assert_eq!(
         replication.commit_index(),
@@ -866,7 +869,7 @@ fn test_liveness_get_append_entries_with_compacted_snapshot_point() {
     // Simulate that follower 2 confirmed up to index 10
     // This will set next_index[2] = 11 (one after the confirmed match)
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 10, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(2, true, 10, &storage, &mut state_machine, &config, 1);
 
     // Now next_index[2] = 11, so prev_log_index will be 10
     let msg = replication.get_append_entries_for_follower::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(2, 3, &storage);
@@ -940,7 +943,7 @@ fn test_safety_get_append_entries_before_snapshot_point() {
     for _ in 0..7 {
         // Decrement from 11 down to 4
         let _config_changes: InMemoryConfigChangeCollection = replication
-            .handle_append_entries_response(2, false, 0, &storage, &mut state_machine, &config);
+            .handle_append_entries_response(2, false, 0, &storage, &mut state_machine, &config, 1);
     }
 
     let msg = replication.get_append_entries_for_follower::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(2, 3, &storage);
@@ -1417,6 +1420,7 @@ fn test_liveness_leader_detects_follower_needs_snapshot() {
             &storage,
             &mut InMemoryStateMachine::new(),
             &config,
+            1,
         );
     }
 
@@ -1950,6 +1954,7 @@ fn test_promote_caught_up_server_when_match_index_equals_commit_index() {
         &storage,
         &mut state_machine,
         &config,
+        1,
     );
     assert_eq!(
         replication.commit_index(),
@@ -1967,7 +1972,7 @@ fn test_promote_caught_up_server_when_match_index_equals_commit_index() {
 
     // Server 4 replicates up to index 2 (not yet caught up)
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(4, true, 2, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(4, true, 2, &storage, &mut state_machine, &config, 1);
 
     assert!(
         replication.is_catching_up(4),
@@ -1976,7 +1981,7 @@ fn test_promote_caught_up_server_when_match_index_equals_commit_index() {
 
     // Server 4 replicates up to index 3 (matches commit_index)
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(4, true, 3, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(4, true, 3, &storage, &mut state_machine, &config, 1);
 
     // Should be promoted (no longer catching up)
     assert!(
@@ -2024,7 +2029,7 @@ fn test_catching_up_server_does_not_affect_commit_index() {
 
     // Node 2 confirms index 3
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 3, &storage, &mut state_machine, &config);
+        .handle_append_entries_response(2, true, 3, &storage, &mut state_machine, &config, 1);
 
     // Now 2 out of 3 voting members (leader + node 2) have index 3
     // This is a majority of voting members, so commit_index should advance
@@ -2079,6 +2084,7 @@ fn test_multiple_catching_up_servers_excluded_from_quorum() {
         &storage,
         &mut state_machine,
         &config,
+        1,
     );
     let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
         5,
@@ -2087,6 +2093,7 @@ fn test_multiple_catching_up_servers_excluded_from_quorum() {
         &storage,
         &mut state_machine,
         &config,
+        1,
     );
 
     // Still need majority of the original 3 voting nodes
@@ -2105,6 +2112,7 @@ fn test_multiple_catching_up_servers_excluded_from_quorum() {
         &storage,
         &mut state_machine,
         &config,
+        1,
     );
 
     // Now we have majority of voting members (leader + node 2)
@@ -2145,6 +2153,7 @@ fn test_catching_up_server_promotion_via_snapshot() {
         &storage,
         &mut state_machine,
         &config,
+        1,
     );
     assert_eq!(replication.commit_index(), 10);
 
@@ -2210,6 +2219,7 @@ fn test_catching_up_server_not_promoted_if_behind_commit_index() {
         &storage,
         &mut state_machine,
         &config,
+        1,
     );
     assert_eq!(
         replication.commit_index(),
@@ -2230,6 +2240,7 @@ fn test_catching_up_server_not_promoted_if_behind_commit_index() {
         &storage,
         &mut state_machine,
         &config,
+        1,
     );
 
     assert!(
@@ -2245,6 +2256,7 @@ fn test_catching_up_server_not_promoted_if_behind_commit_index() {
         &storage,
         &mut state_machine,
         &config,
+        1,
     );
 
     assert!(

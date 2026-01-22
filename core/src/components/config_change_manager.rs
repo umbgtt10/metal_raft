@@ -179,27 +179,25 @@ where
                 ConfigurationChange::RemoveServer(node_id) => {
                     observer.configuration_change_applied(self_id, *node_id, false);
 
-                    // Remove from configuration
+                    // Remove from configuration (works for self-removal too!)
                     let mut new_members = C::new();
                     for existing_id in self.config.members.iter() {
                         if existing_id != *node_id {
                             let _ = new_members.push(existing_id);
                         }
                     }
+                    self.config = Configuration::new(new_members);
 
-                    // If we removed ourselves, create config that excludes self
+                    // Clean up replication state if we're leader
+                    if *current_role == NodeState::Leader {
+                        replication.next_index_mut().remove(*node_id);
+                        replication.match_index_mut().remove(*node_id);
+                    }
+
+                    // If we removed ourselves, step down
                     if *node_id == self_id {
-                        self.config = Configuration::without_self(new_members);
                         *current_role = NodeState::Follower;
                         // Note: Observer notification for role change should be handled by caller
-                    } else {
-                        self.config = Configuration::new(new_members);
-
-                        // Clean up replication state if we're leader
-                        if *current_role == NodeState::Leader {
-                            replication.next_index_mut().remove(*node_id);
-                            replication.match_index_mut().remove(*node_id);
-                        }
                     }
                 }
             }

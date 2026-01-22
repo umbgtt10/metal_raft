@@ -56,14 +56,20 @@ impl MapCollection for EmbassyMapCollection {
         leader_last_index: LogIndex,
         config: &Configuration<C>,
         catching_up_servers: &Self,
+        leader_id: NodeId,
     ) -> Option<LogIndex> {
         let mut indices: heapless::Vec<LogIndex, 10> = heapless::Vec::new();
 
         // Add leader's own index
         let _ = indices.push(leader_last_index);
 
-        // Add match_index values for voting members only (exclude catching-up servers)
+        // Add match_index values for voting members only (exclude catching-up servers and leader)
         for member in config.members.iter() {
+            // Skip leader (already added)
+            if member == leader_id {
+                continue;
+            }
+
             // Skip catching-up servers
             if catching_up_servers.get(member).is_some() {
                 continue;
@@ -73,7 +79,7 @@ impl MapCollection for EmbassyMapCollection {
             if let Some(match_idx) = self.get(member) {
                 let _ = indices.push(match_idx);
             } else {
-                // Not yet in match_index map
+                // Not yet in match_index map (unresponsive peer)
                 let _ = indices.push(0);
             }
         }

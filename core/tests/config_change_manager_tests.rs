@@ -23,6 +23,8 @@ use raft_test_utils::{
 
 fn make_test_config(nodes: &[u64]) -> Configuration<InMemoryNodeCollection> {
     let mut members = InMemoryNodeCollection::new();
+    // Include self (node 1) in configuration
+    members.push(1).unwrap();
     for &node_id in nodes {
         members.push(node_id).unwrap();
     }
@@ -35,7 +37,8 @@ fn test_new_manager() {
     let manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    assert_eq!(manager.config().size(), 3); // 2 peers + 1 self
+    assert_eq!(manager.config().size(), 3); // nodes 1, 2, 3
+    assert!(manager.config().contains(1));
     assert!(manager.config().contains(2));
     assert!(manager.config().contains(3));
 }
@@ -47,7 +50,7 @@ fn test_config_getter() {
         ConfigChangeManager::new(config);
 
     let retrieved_config = manager.config();
-    assert_eq!(retrieved_config.size(), 4); // 3 peers + 1 self
+    assert_eq!(retrieved_config.size(), 4); // nodes 1, 2, 3, 4
     assert_eq!(retrieved_config.quorum_size(), 3); // (4/2)+1 = 3
 }
 
