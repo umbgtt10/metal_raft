@@ -105,7 +105,6 @@ fn test_safety_grant_vote_to_first_candidate() {
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
     let mut current_term = 1;
-    let mut role = NodeState::Follower;
 
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1, // term
@@ -114,7 +113,6 @@ fn test_safety_grant_vote_to_first_candidate() {
         0, // last_log_term
         &mut current_term,
         &mut storage,
-        &mut role,
     );
 
     match response {
@@ -136,7 +134,6 @@ fn test_safety_reject_when_already_voted() {
     storage.set_current_term(1);
     storage.set_voted_for(Some(3));
     let mut current_term = 1;
-    let mut role = NodeState::Follower;
 
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1, // term
@@ -145,7 +142,6 @@ fn test_safety_reject_when_already_voted() {
         0,
         &mut current_term,
         &mut storage,
-        &mut role,
     );
 
     match response {
@@ -167,7 +163,6 @@ fn test_safety_grant_vote_to_same_candidate_twice() {
     storage.set_current_term(1);
     storage.set_voted_for(Some(5));
     let mut current_term = 1;
-    let mut role = NodeState::Follower;
 
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1, // term
@@ -176,7 +171,6 @@ fn test_safety_grant_vote_to_same_candidate_twice() {
         0,
         &mut current_term,
         &mut storage,
-        &mut role,
     );
 
     match response {
@@ -211,7 +205,6 @@ fn test_safety_reject_less_up_to_date_candidate() {
 
     storage.set_current_term(2);
     let mut current_term = 2;
-    let mut role = NodeState::Follower;
 
     // Candidate only has 2 entries in term 2
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
@@ -221,7 +214,6 @@ fn test_safety_reject_less_up_to_date_candidate() {
         2, // last_log_term
         &mut current_term,
         &mut storage,
-        &mut role,
     );
 
     match response {
@@ -254,7 +246,6 @@ fn test_safety_grant_to_equally_up_to_date_candidate() {
 
     storage.set_current_term(2);
     let mut current_term = 2;
-    let mut role = NodeState::Follower;
 
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         2,
@@ -263,7 +254,6 @@ fn test_safety_grant_to_equally_up_to_date_candidate() {
         2, // same last_log_term
         &mut current_term,
         &mut storage,
-        &mut role,
     );
 
     match response {
@@ -284,7 +274,6 @@ fn test_safety_update_term_from_higher_request() {
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
     let mut current_term = 1;
-    let mut role = NodeState::Leader;
 
     election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         5, // higher term
@@ -293,12 +282,10 @@ fn test_safety_update_term_from_higher_request() {
         0,
         &mut current_term,
         &mut storage,
-        &mut role,
     );
 
     assert_eq!(current_term, 5);
     assert_eq!(storage.current_term(), 5);
-    assert_eq!(role, NodeState::Follower, "Should step down to follower");
 }
 
 #[test]
@@ -308,7 +295,6 @@ fn test_safety_reject_stale_vote_request() {
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(5);
     let mut current_term = 5;
-    let mut role = NodeState::Follower;
 
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         3, // stale term
@@ -317,7 +303,6 @@ fn test_safety_reject_stale_vote_request() {
         0,
         &mut current_term,
         &mut storage,
-        &mut role,
     );
 
     match response {
@@ -696,7 +681,6 @@ fn test_safety_grant_vote_with_compacted_log() {
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(3);
     let mut current_term = 3;
-    let mut role = NodeState::Follower;
 
     // Voter has entries 1-20, creates snapshot at 15, compacts everything
     let entries: Vec<LogEntry<String>> = (1..=20)
@@ -752,7 +736,6 @@ fn test_safety_grant_vote_with_compacted_log() {
         2,  // last_log_term (same term)
         &mut current_term,
         &mut storage,
-        &mut role,
     );
 
     match response {
@@ -775,7 +758,6 @@ fn test_safety_reject_candidate_with_older_log_than_snapshot() {
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(3);
     let mut current_term = 3;
-    let mut role = NodeState::Follower;
 
     // Voter has snapshot at index 15, term 2
     use raft_core::log_entry::LogEntry;
@@ -819,7 +801,6 @@ fn test_safety_reject_candidate_with_older_log_than_snapshot() {
         2,  // last_log_term
         &mut current_term,
         &mut storage,
-        &mut role,
     );
 
     match response {
@@ -842,7 +823,6 @@ fn test_safety_grant_vote_with_higher_term_than_snapshot() {
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(3);
     let mut current_term = 3;
-    let mut role = NodeState::Follower;
 
     // Voter has snapshot at index 15, term 2
     let entries: Vec<LogEntry<String>> = (1..=15)
@@ -882,7 +862,6 @@ fn test_safety_grant_vote_with_higher_term_than_snapshot() {
         3,  // last_log_term (higher term!)
         &mut current_term,
         &mut storage,
-        &mut role,
     );
 
     match response {

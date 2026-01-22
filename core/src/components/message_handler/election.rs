@@ -132,7 +132,6 @@ pub fn handle_vote_request<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
         last_log_term,
         ctx.current_term,
         ctx.storage,
-        ctx.role,
     );
     common::send(ctx, from, response);
 }

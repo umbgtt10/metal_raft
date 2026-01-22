@@ -171,7 +171,6 @@ where
         last_log_term: Term,
         current_term: &mut Term,
         storage: &mut S,
-        _role: &mut NodeState,
     ) -> RaftMsg<P, L, CC>
     where
         P: Clone,
@@ -179,6 +178,11 @@ where
         CC: ChunkCollection + Clone,
         S: Storage<Payload = P, LogEntryCollection = L> + Clone,
     {
+        if term > *current_term {
+            *current_term = term;
+            storage.set_current_term(term);
+        }
+
         // Term validation is handled in the message handler
         let vote_granted = self.should_grant_vote(
             term,
