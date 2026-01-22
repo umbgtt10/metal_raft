@@ -228,7 +228,7 @@ where
 
     fn create_context(
         &mut self,
-    ) -> MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC> {
+    ) -> MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK> {
         MessageHandlerContext {
             id: &self.id,
             role: &mut self.role,
@@ -241,6 +241,7 @@ where
             replication: &mut self.replication,
             config_manager: &mut self.config_manager,
             snapshot_manager: &mut self.snapshot_manager,
+            leader_lease: &mut self.leader_lease,
             _phantom: core::marker::PhantomData,
         }
     }

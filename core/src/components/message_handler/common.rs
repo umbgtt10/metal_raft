@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    clock::Clock,
     collections::{
         chunk_collection::ChunkCollection, config_change_collection::ConfigChangeCollection,
         log_entry_collection::LogEntryCollection, map_collection::MapCollection,
@@ -20,8 +21,9 @@ use crate::{
     types::{NodeId, Term},
 };
 
-pub fn send<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn send<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     to: NodeId,
     msg: RaftMsg<P, L, CC>,
 ) where
@@ -36,12 +38,15 @@ pub fn send<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     ctx.transport.send(to, msg);
 }
 
-pub fn broadcast<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+
+#[allow(clippy::type_complexity)]
+pub fn broadcast<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     msg: RaftMsg<P, L, CC>,
 ) where
     P: Clone,
@@ -55,6 +60,7 @@ pub fn broadcast<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     // Collect peer IDs first to avoid borrowing issues (excluding self)
     let mut ids = C::new();
@@ -68,8 +74,9 @@ pub fn broadcast<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     }
 }
 
-pub fn node_state_to_role<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn node_state_to_role<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
 ) -> Role
 where
     P: Clone,
@@ -83,12 +90,14 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     RoleTransitionManager::node_state_to_role(ctx.role)
 }
 
-pub fn step_down<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn step_down<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     new_term: Term,
 ) where
     P: Clone,
@@ -102,6 +111,7 @@ pub fn step_down<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     let old_role = RoleTransitionManager::node_state_to_role(ctx.role);
     let old_term = *ctx.current_term;
@@ -119,8 +129,9 @@ pub fn step_down<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     );
 }
 
-pub fn validate_term_and_step_down<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn validate_term_and_step_down<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     term: Term,
 ) -> bool
 where
@@ -135,6 +146,7 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     if term > *ctx.current_term {
         step_down(ctx, term);
@@ -144,8 +156,9 @@ where
     }
 }
 
-pub fn reset_election_timer_if_valid_term<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn reset_election_timer_if_valid_term<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     term: Term,
 ) where
     P: Clone,
@@ -159,14 +172,16 @@ pub fn reset_election_timer_if_valid_term<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     if term >= *ctx.current_term {
         ctx.election.timer_service_mut().reset_election_timer();
     }
 }
 
-pub fn apply_config_changes<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn apply_config_changes<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     changes: CCC,
 ) where
     P: Clone,
@@ -180,6 +195,7 @@ pub fn apply_config_changes<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     // Check if we need to notify observer about role change (if we removed ourselves)
     let old_role = node_state_to_role(ctx);

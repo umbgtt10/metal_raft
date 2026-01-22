@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    clock::Clock,
     collections::{
         chunk_collection::ChunkCollection, config_change_collection::ConfigChangeCollection,
         log_entry_collection::LogEntryCollection, map_collection::MapCollection,
@@ -11,6 +12,7 @@ use crate::{
     components::{
         config_change_manager::{ConfigChangeManager, ConfigError},
         election_manager::ElectionManager,
+        leader_lease::LeaderLease,
         log_replication_manager::LogReplicationManager,
         snapshot_manager::SnapshotManager,
     },
@@ -20,7 +22,7 @@ use crate::{
     raft_messages::RaftMsg,
     state_machine::StateMachine,
     storage::Storage,
-    timer_service::TimerService,
+    timer_service::{TimerKind, TimerService},
     transport::Transport,
     types::{LogIndex, NodeId, Term},
 };
@@ -30,8 +32,8 @@ mod common;
 mod election;
 mod replication;
 
-type PhantomData<T, S, P, SM, C, L, CC, M, TS, O, CCC> =
-    core::marker::PhantomData<(T, S, P, SM, C, L, CC, M, TS, O, CCC)>;
+type PhantomData<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK> =
+    core::marker::PhantomData<(T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK)>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientError {
@@ -40,7 +42,7 @@ pub enum ClientError {
 
 /// MessageHandler handles all Raft message processing.
 /// This is a zero-sized stateless type that separates message handling logic from RaftNode.
-pub struct MessageHandler<T, S, P, SM, C, L, CC, M, TS, O, CCC>
+pub struct MessageHandler<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
 where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -53,12 +55,13 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
-    _phantom: PhantomData<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+    _phantom: PhantomData<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
 }
 
 /// Context struct that bundles all mutable references needed by MessageHandler
-pub struct MessageHandlerContext<'a, T, S, P, SM, C, L, CC, M, TS, O, CCC>
+pub struct MessageHandlerContext<'a, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
 where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -71,6 +74,7 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     pub id: &'a NodeId,
     pub role: &'a mut NodeState,
@@ -83,10 +87,12 @@ where
     pub replication: &'a mut LogReplicationManager<M>,
     pub config_manager: &'a mut ConfigChangeManager<C, M>,
     pub snapshot_manager: &'a mut SnapshotManager,
+    pub leader_lease: &'a mut LeaderLease<CLK>,
     pub _phantom: core::marker::PhantomData<CCC>,
 }
 
-impl<T, S, P, SM, C, L, CC, M, TS, O, CCC> MessageHandler<T, S, P, SM, C, L, CC, M, TS, O, CCC>
+impl<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
+    MessageHandler<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
 where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -99,6 +105,7 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     pub fn new() -> Self {
         Self {
@@ -107,9 +114,10 @@ where
     }
 
     /// Main entry point for handling messages
+    #[allow(clippy::type_complexity)]
     pub fn handle_message(
         &self,
-        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
         from: NodeId,
         msg: RaftMsg<P, L, CC>,
     ) where
@@ -201,24 +209,26 @@ where
         }
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn handle_timer(
         &self,
-        ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC>,
-        kind: crate::timer_service::TimerKind,
+        ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
+        kind: TimerKind,
     ) {
         match kind {
-            crate::timer_service::TimerKind::Election => {
+            TimerKind::Election => {
                 election::handle_election_timer(ctx);
             }
-            crate::timer_service::TimerKind::Heartbeat => {
+            TimerKind::Heartbeat => {
                 replication::handle_heartbeat_timer(ctx);
             }
         }
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn submit_client_command(
         &self,
-        ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
         payload: P,
     ) -> Result<LogIndex, ClientError>
     where
@@ -228,9 +238,10 @@ where
         admin::submit_client_command(ctx, payload)
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn submit_config_change(
         &self,
-        ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
         change: ConfigurationChange,
     ) -> Result<LogIndex, ClientError>
     where
@@ -240,24 +251,27 @@ where
         admin::submit_config_change(ctx, change)
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn start_pre_vote(
         &self,
-        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     ) {
         election::start_pre_vote(ctx);
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn start_election(
         &self,
-        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     ) {
         election::start_election(ctx);
     }
 
     /// Add a server to the cluster configuration
+    #[allow(clippy::type_complexity)]
     pub fn add_server(
         &self,
-        ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
         node_id: NodeId,
     ) -> Result<LogIndex, ConfigError>
     where
@@ -269,9 +283,10 @@ where
     }
 
     /// Remove a server from the cluster configuration
+    #[allow(clippy::type_complexity)]
     pub fn remove_server(
         &self,
-        ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
         node_id: NodeId,
     ) -> Result<LogIndex, ConfigError>
     where
@@ -282,48 +297,53 @@ where
         admin::remove_server(ctx, node_id)
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn send(
         &self,
-        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
         to: NodeId,
         msg: RaftMsg<P, L, CC>,
     ) {
         common::send(ctx, to, msg);
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn broadcast(
         &self,
-        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
         msg: RaftMsg<P, L, CC>,
     ) {
         common::broadcast(ctx, msg);
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn send_heartbeats(
         &self,
-        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     ) {
         replication::send_heartbeats(ctx);
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn send_append_entries_to_followers(
         &self,
-        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     ) {
         replication::send_append_entries_to_followers(ctx);
     }
 
+    #[allow(clippy::type_complexity)]
     pub fn apply_config_changes(
         &self,
-        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+        ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
         changes: CCC,
     ) {
         common::apply_config_changes(ctx, changes);
     }
 }
 
-impl<T, S, P, SM, C, L, CC, M, TS, O, CCC> Default
-    for MessageHandler<T, S, P, SM, C, L, CC, M, TS, O, CCC>
+impl<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK> Default
+    for MessageHandler<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
 where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -336,6 +356,7 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     fn default() -> Self {
         Self::new()

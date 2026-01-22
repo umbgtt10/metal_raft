@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    clock::Clock,
     collections::{
         chunk_collection::ChunkCollection, config_change_collection::ConfigChangeCollection,
         log_entry_collection::LogEntryCollection, map_collection::MapCollection,
@@ -23,8 +24,9 @@ use crate::{
 };
 
 /// Add a server to the cluster configuration
-pub fn add_server<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn add_server<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     node_id: NodeId,
 ) -> Result<LogIndex, ConfigError>
 where
@@ -39,6 +41,7 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     let is_leader = *ctx.role == NodeState::Leader;
     let commit_index = ctx.replication.commit_index();
@@ -58,8 +61,9 @@ where
 }
 
 /// Remove a server from the cluster configuration
-pub fn remove_server<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn remove_server<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     node_id: NodeId,
 ) -> Result<LogIndex, ConfigError>
 where
@@ -74,6 +78,7 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     let is_leader = *ctx.role == NodeState::Leader;
     let commit_index = ctx.replication.commit_index();
@@ -92,8 +97,9 @@ where
     Ok(index)
 }
 
-pub fn submit_client_command<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn submit_client_command<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     payload: P,
 ) -> Result<LogIndex, ClientError>
 where
@@ -108,6 +114,7 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     if *ctx.role != NodeState::Leader {
         return Err(ClientError::NotLeader);
@@ -136,8 +143,9 @@ where
     Ok(index)
 }
 
-pub fn submit_config_change<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn submit_config_change<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     change: ConfigurationChange,
 ) -> Result<LogIndex, ClientError>
 where
@@ -152,6 +160,7 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     if *ctx.role != NodeState::Leader {
         return Err(ClientError::NotLeader);

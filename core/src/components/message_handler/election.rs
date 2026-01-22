@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    clock::Clock,
     collections::{
         chunk_collection::ChunkCollection, config_change_collection::ConfigChangeCollection,
         log_entry_collection::LogEntryCollection, map_collection::MapCollection,
@@ -22,8 +23,9 @@ use crate::{
     types::{LogIndex, NodeId, Term},
 };
 
-pub fn handle_pre_vote_request<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn handle_pre_vote_request<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     from: NodeId,
     term: Term,
     candidate_id: NodeId,
@@ -41,6 +43,7 @@ pub fn handle_pre_vote_request<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     ctx.observer
         .pre_vote_requested(candidate_id, *ctx.id, term, last_log_index, last_log_term);
@@ -63,8 +66,9 @@ pub fn handle_pre_vote_request<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     common::send(ctx, from, response);
 }
 
-pub fn handle_pre_vote_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn handle_pre_vote_response<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     from: NodeId,
     term: Term,
     vote_granted: bool,
@@ -80,6 +84,7 @@ pub fn handle_pre_vote_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     // Ignore pre-vote responses from higher terms
     if term > *ctx.current_term {
@@ -95,9 +100,9 @@ pub fn handle_pre_vote_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
         start_election(ctx);
     }
 }
-
-pub fn handle_vote_request<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn handle_vote_request<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     from: NodeId,
     term: Term,
     candidate_id: NodeId,
@@ -115,6 +120,7 @@ pub fn handle_vote_request<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     let response = ctx.election.handle_vote_request(
         term,
@@ -127,9 +133,9 @@ pub fn handle_vote_request<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     );
     common::send(ctx, from, response);
 }
-
-pub fn handle_vote_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn handle_vote_response<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     from: NodeId,
     term: Term,
     vote_granted: bool,
@@ -145,6 +151,7 @@ pub fn handle_vote_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     if common::validate_term_and_step_down(ctx, term) {
         return;
@@ -164,8 +171,9 @@ pub fn handle_vote_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     }
 }
 
-pub fn start_pre_vote<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn start_pre_vote<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
 ) where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -178,6 +186,7 @@ pub fn start_pre_vote<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     let pre_vote_request = RoleTransitionManager::start_pre_vote(
         *ctx.id,
@@ -190,8 +199,9 @@ pub fn start_pre_vote<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     common::broadcast(ctx, pre_vote_request);
 }
 
-pub fn start_election<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn start_election<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
 ) where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -204,6 +214,7 @@ pub fn start_election<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     let old_role = RoleTransitionManager::node_state_to_role(ctx.role);
 
@@ -225,8 +236,9 @@ pub fn start_election<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     }
 }
 
-fn become_leader<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+fn become_leader<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
 ) where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -239,6 +251,7 @@ fn become_leader<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     let old_role = RoleTransitionManager::node_state_to_role(ctx.role);
 
@@ -258,8 +271,9 @@ fn become_leader<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     replication::send_append_entries_to_followers(ctx);
 }
 
-pub fn handle_election_timer<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn handle_election_timer<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
 ) where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -272,6 +286,7 @@ pub fn handle_election_timer<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     ctx.observer
         .timer_fired(*ctx.id, ObserverTimerKind::Election, *ctx.current_term);

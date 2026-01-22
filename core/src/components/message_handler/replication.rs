@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    clock::Clock,
     collections::{
         chunk_collection::ChunkCollection, config_change_collection::ConfigChangeCollection,
         log_entry_collection::LogEntryCollection, map_collection::MapCollection,
@@ -19,8 +20,9 @@ use crate::{
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn handle_append_entries<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn handle_append_entries<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     from: NodeId,
     term: Term,
     prev_log_index: LogIndex,
@@ -39,6 +41,7 @@ pub fn handle_append_entries<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     common::reset_election_timer_if_valid_term(ctx, term);
 
@@ -66,8 +69,9 @@ pub fn handle_append_entries<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     common::send(ctx, from, response);
 }
 
-pub fn handle_append_entries_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn handle_append_entries_response<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     from: NodeId,
     term: Term,
     success: bool,
@@ -84,6 +88,7 @@ pub fn handle_append_entries_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     if common::validate_term_and_step_down(ctx, term) {
         return;
@@ -117,9 +122,10 @@ pub fn handle_append_entries_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     }
 }
 
+#[allow(clippy::type_complexity)]
 #[allow(clippy::too_many_arguments)]
-pub fn handle_install_snapshot<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+pub fn handle_install_snapshot<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     from: NodeId,
     term: Term,
     leader_id: NodeId,
@@ -140,6 +146,7 @@ pub fn handle_install_snapshot<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     common::reset_election_timer_if_valid_term(ctx, term);
 
@@ -159,8 +166,9 @@ pub fn handle_install_snapshot<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     common::send(ctx, from, response);
 }
 
-pub fn handle_install_snapshot_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn handle_install_snapshot_response<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
     from: NodeId,
     term: Term,
     success: bool,
@@ -176,6 +184,7 @@ pub fn handle_install_snapshot_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     if common::validate_term_and_step_down(ctx, term) {
         return;
@@ -194,8 +203,9 @@ pub fn handle_install_snapshot_response<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     }
 }
 
-pub fn send_heartbeats<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn send_heartbeats<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
 ) where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -208,13 +218,15 @@ pub fn send_heartbeats<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     send_append_entries_to_followers(ctx);
     ctx.election.timer_service_mut().reset_heartbeat_timer();
 }
 
-pub fn send_append_entries_to_followers<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn send_append_entries_to_followers<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
 ) where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -227,6 +239,7 @@ pub fn send_append_entries_to_followers<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     // Collect peer IDs first to avoid borrowing issues (excluding self)
     let mut ids = C::new();
@@ -243,8 +256,9 @@ pub fn send_append_entries_to_followers<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     }
 }
 
-pub fn handle_heartbeat_timer<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+pub fn handle_heartbeat_timer<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
 ) where
     P: Clone,
     T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
@@ -257,6 +271,7 @@ pub fn handle_heartbeat_timer<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     ctx.observer
         .timer_fired(*ctx.id, ObserverTimerKind::Heartbeat, *ctx.current_term);
@@ -266,8 +281,9 @@ pub fn handle_heartbeat_timer<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
     }
 }
 
-fn should_create_snapshot<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+fn should_create_snapshot<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
 ) -> bool
 where
     P: Clone,
@@ -281,13 +297,15 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     ctx.snapshot_manager
         .should_create(ctx.replication.commit_index(), ctx.storage)
 }
 
-fn create_snapshot_internal<T, S, P, SM, C, L, CC, M, TS, O, CCC>(
-    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC>,
+#[allow(clippy::type_complexity)]
+fn create_snapshot_internal<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
+    ctx: &mut MessageHandlerContext<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
 ) -> Result<(), ()>
 where
     P: Clone,
@@ -301,6 +319,7 @@ where
     TS: TimerService,
     O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     CCC: ConfigChangeCollection,
+    CLK: Clock,
 {
     let commit_index = ctx.replication.commit_index();
     ctx.snapshot_manager
