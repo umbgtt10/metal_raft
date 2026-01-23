@@ -206,7 +206,6 @@ pub fn handle_install_snapshot_response<T, S, P, SM, C, L, CC, M, TS, O, CCC, CL
         if let Some(snapshot_metadata) = ctx.storage.snapshot_metadata() {
             ctx.replication.handle_install_snapshot_response(
                 from,
-                term,
                 success,
                 snapshot_metadata.last_included_index,
             );

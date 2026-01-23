@@ -45,6 +45,34 @@ where
         }
     }
 
+    pub fn commit_index(&self) -> LogIndex {
+        self.commit_index
+    }
+
+    pub fn last_applied(&self) -> LogIndex {
+        self.last_applied
+    }
+
+    pub fn set_last_applied(&mut self, index: LogIndex) {
+        self.last_applied = index;
+    }
+
+    pub fn next_index(&self) -> &M {
+        &self.next_index
+    }
+
+    pub fn next_index_mut(&mut self) -> &mut M {
+        &mut self.next_index
+    }
+
+    pub fn match_index(&self) -> &M {
+        &self.match_index
+    }
+
+    pub fn match_index_mut(&mut self) -> &mut M {
+        &mut self.match_index
+    }
+
     /// Initialize follower tracking when becoming leader
     pub fn initialize_leader_state<P, L, S, I>(&mut self, peers: I, storage: &S)
     where
@@ -181,7 +209,7 @@ where
         let (success, config_changes) = if term < *current_term {
             (false, CC::new())
         } else {
-            self.try_append_entries(
+            match self.try_append_entries(
                 prev_log_index,
                 prev_log_term,
                 entries,
@@ -190,7 +218,10 @@ where
                 state_machine,
                 observer,
                 node_id,
-            )
+            ) {
+                Some(config_changes) => (true, config_changes),
+                None => (false, CC::new()),
+            }
         };
 
         let response = RaftMsg::AppendEntriesResponse {
@@ -265,7 +296,7 @@ where
         state_machine: &mut SM,
         observer: &mut O,
         node_id: NodeId,
-    ) -> (bool, CC)
+    ) -> Option<CC>
     where
         S: Storage<Payload = P, LogEntryCollection = L>,
         SM: StateMachine<Payload = P>,
@@ -276,7 +307,7 @@ where
     {
         // Check log consistency
         if !self.check_log_consistency(prev_log_index, prev_log_term, storage) {
-            return (false, CC::new());
+            return None;
         }
 
         // Append entries if any
@@ -293,10 +324,10 @@ where
             self.commit_index = leader_commit.min(storage.last_log_index());
             let config_changes =
                 self.apply_committed_entries(storage, state_machine, observer, node_id);
-            return (true, config_changes);
+            return Some(config_changes);
         }
 
-        (true, CC::new())
+        Some(CC::new())
     }
 
     fn check_log_consistency<P, L, S>(
@@ -405,34 +436,6 @@ where
         CC::new()
     }
 
-    pub fn commit_index(&self) -> LogIndex {
-        self.commit_index
-    }
-
-    pub fn last_applied(&self) -> LogIndex {
-        self.last_applied
-    }
-
-    pub fn set_last_applied(&mut self, index: LogIndex) {
-        self.last_applied = index;
-    }
-
-    pub fn next_index(&self) -> &M {
-        &self.next_index
-    }
-
-    pub fn next_index_mut(&mut self) -> &mut M {
-        &mut self.next_index
-    }
-
-    pub fn match_index(&self) -> &M {
-        &self.match_index
-    }
-
-    pub fn match_index_mut(&mut self) -> &mut M {
-        &mut self.match_index
-    }
-
     /// Handle incoming InstallSnapshot RPC - returns response message
     #[allow(clippy::too_many_arguments)]
     pub fn handle_install_snapshot<P, L, C, S, SM>(
@@ -526,7 +529,6 @@ where
     pub fn handle_install_snapshot_response(
         &mut self,
         peer: NodeId,
-        _term: Term,
         success: bool,
         last_included_index: LogIndex,
     ) {

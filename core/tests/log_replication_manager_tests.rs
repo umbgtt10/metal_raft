@@ -1956,7 +1956,6 @@ fn test_liveness_leader_updates_next_index_after_snapshot_success() {
     // Handle successful InstallSnapshotResponse
     replication.handle_install_snapshot_response(
         0,    // peer_id
-        2,    // term
         true, // success
         10,   // last_included_index from snapshot
     );
@@ -2300,7 +2299,7 @@ fn test_catching_up_server_promotion_via_snapshot() {
     assert!(replication.is_catching_up(3));
 
     // Server 3 installs snapshot up to index 10 (matches commit_index exactly)
-    replication.handle_install_snapshot_response(3, 2, true, 10);
+    replication.handle_install_snapshot_response(3, true, 10);
 
     // Should be promoted when match_index equals commit_index
     assert!(
