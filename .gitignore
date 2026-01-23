@@ -1,1 +1,4 @@
 /target
+
+# Persistent storage files from semihosting
+embassy/persistency/

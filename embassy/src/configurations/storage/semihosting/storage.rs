@@ -2,38 +2,375 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+//! Persistent storage using semihosting file I/O
+//!
+//! This storage implementation persists Raft state to files on the host filesystem
+//! via QEMU semihosting. This provides realistic persistence behavior for development
+//! and testing without requiring actual flash hardware emulation.
+//!
+//! File layout per node:
+//! - `raft_node_{id}_metadata.bin` - Contains current_term and voted_for
+//! - `raft_node_{id}_log.bin` - Append-only log entries
+//! - `raft_node_{id}_snapshot.bin` - Latest snapshot data
+//! - `raft_node_{id}_snapshot_meta.bin` - Snapshot metadata
+
 use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
 use crate::embassy_state_machine::EmbassySnapshotData;
+use alloc::format;
 use alloc::string::String;
+use alloc::vec::Vec as AllocVec;
+use core::fmt::Write;
 use heapless::Vec;
 use raft_core::{
     collections::{chunk_collection::ChunkCollection, log_entry_collection::LogEntryCollection},
-    log_entry::LogEntry,
+    log_entry::{EntryType, LogEntry},
     snapshot::{SnapshotBuilder, SnapshotData},
     storage::Storage,
     types::{LogIndex, NodeId, Term},
 };
 
-/// Placeholder semihosting storage (currently just in-memory)
-/// TODO: Implement actual file I/O with updated cortex-m-semihosting API
+/// Semihosting storage with persistent file I/O
 #[derive(Clone)]
 pub struct SemihostingStorage {
+    node_id: NodeId,
     current_term: Term,
     voted_for: Option<NodeId>,
-    log: Vec<LogEntry<String>, 256>, // Max 256 entries
+    log: AllocVec<LogEntry<String>>,
     snapshot: Option<raft_core::snapshot::Snapshot<EmbassySnapshotData>>,
     first_log_index: LogIndex,
 }
 
 impl SemihostingStorage {
-    pub fn new(_node_id: u64) -> Self {
-        Self {
+    pub fn new(node_id: u64) -> Self {
+        let mut storage = Self {
+            node_id,
             current_term: 0,
             voted_for: None,
-            log: Vec::new(),
+            log: AllocVec::new(),
             snapshot: None,
             first_log_index: 1,
+        };
+
+        // Try to load existing state from disk
+        storage.load_from_disk();
+        storage
+    }
+
+    fn metadata_path(&self) -> AllocVec<u8> {
+        format!("persistency/raft_node_{}_metadata.bin\0", self.node_id).into_bytes()
+    }
+
+    fn log_path(&self) -> AllocVec<u8> {
+        format!("persistency/raft_node_{}_log.bin\0", self.node_id).into_bytes()
+    }
+
+    fn snapshot_path(&self) -> AllocVec<u8> {
+        format!("persistency/raft_node_{}_snapshot.bin\0", self.node_id).into_bytes()
+    }
+
+    fn snapshot_meta_path(&self) -> AllocVec<u8> {
+        format!("persistency/raft_node_{}_snapshot_meta.bin\0", self.node_id).into_bytes()
+    }
+
+    /// Load state from disk on startup
+    fn load_from_disk(&mut self) {
+        // Load metadata (term and voted_for)
+        if let Ok(data) = self.read_file(&self.metadata_path()) {
+            if data.len() >= 17 {
+                self.current_term = u64::from_le_bytes([
+                    data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+                ]);
+
+                let has_vote = data[8] != 0;
+                if has_vote {
+                    self.voted_for = Some(u64::from_le_bytes([
+                        data[9], data[10], data[11], data[12], data[13], data[14], data[15],
+                        data[16],
+                    ]));
+                }
+            }
+        }
+
+        // Load log entries
+        if let Ok(data) = self.read_file(&self.log_path()) {
+            self.log = self.deserialize_log(&data);
+        }
+
+        // Load snapshot metadata
+        if let Ok(meta_data) = self.read_file(&self.snapshot_meta_path()) {
+            if meta_data.len() >= 16 {
+                let last_included_index = u64::from_le_bytes([
+                    meta_data[0],
+                    meta_data[1],
+                    meta_data[2],
+                    meta_data[3],
+                    meta_data[4],
+                    meta_data[5],
+                    meta_data[6],
+                    meta_data[7],
+                ]);
+                let last_included_term = u64::from_le_bytes([
+                    meta_data[8],
+                    meta_data[9],
+                    meta_data[10],
+                    meta_data[11],
+                    meta_data[12],
+                    meta_data[13],
+                    meta_data[14],
+                    meta_data[15],
+                ]);
+
+                // Load snapshot data
+                if let Ok(snapshot_data) = self.read_file(&self.snapshot_path()) {
+                    let mut data = Vec::new();
+                    for byte in snapshot_data.iter().take(512) {
+                        if data.push(*byte).is_err() {
+                            break;
+                        }
+                    }
+
+                    self.snapshot = Some(raft_core::snapshot::Snapshot {
+                        metadata: raft_core::snapshot::SnapshotMetadata {
+                            last_included_index,
+                            last_included_term,
+                        },
+                        data: EmbassySnapshotData { data },
+                    });
+
+                    self.first_log_index = last_included_index + 1;
+                }
+            }
+        }
+    }
+
+    /// Persist metadata (term and voted_for) to disk
+    fn persist_metadata(&self) {
+        let mut data = AllocVec::new();
+
+        // Write current_term (8 bytes)
+        data.extend_from_slice(&self.current_term.to_le_bytes());
+
+        // Write voted_for (1 byte flag + 8 bytes value)
+        if let Some(vote) = self.voted_for {
+            data.push(1); // has_vote flag
+            data.extend_from_slice(&vote.to_le_bytes());
+        } else {
+            data.push(0); // no vote
+            data.extend_from_slice(&[0u8; 8]); // padding
+        }
+
+        let _ = self.write_file(&self.metadata_path(), &data);
+    }
+
+    /// Persist log entries to disk
+    fn persist_log(&self) {
+        let data = self.serialize_log(&self.log);
+        let _ = self.write_file(&self.log_path(), &data);
+    }
+
+    /// Persist snapshot to disk
+    fn persist_snapshot(&self) {
+        if let Some(snapshot) = &self.snapshot {
+            // Write snapshot metadata
+            let mut meta_data = AllocVec::new();
+            meta_data.extend_from_slice(&snapshot.metadata.last_included_index.to_le_bytes());
+            meta_data.extend_from_slice(&snapshot.metadata.last_included_term.to_le_bytes());
+            let _ = self.write_file(&self.snapshot_meta_path(), &meta_data);
+
+            // Write snapshot data
+            let _ = self.write_file(&self.snapshot_path(), snapshot.data.data.as_slice());
+        }
+    }
+
+    /// Serialize log entries to bytes
+    fn serialize_log(&self, log: &[LogEntry<String>]) -> AllocVec<u8> {
+        let mut data = AllocVec::new();
+
+        // Write number of entries
+        data.extend_from_slice(&(log.len() as u64).to_le_bytes());
+
+        for entry in log {
+            // Write term (8 bytes)
+            data.extend_from_slice(&entry.term.to_le_bytes());
+
+            // Write entry type and payload
+            match &entry.entry_type {
+                EntryType::Command(payload) => {
+                    data.push(0); // Command type
+                    let payload_bytes = payload.as_bytes();
+                    data.extend_from_slice(&(payload_bytes.len() as u32).to_le_bytes());
+                    data.extend_from_slice(payload_bytes);
+                }
+                EntryType::ConfigChange(_) => {
+                    data.push(1); // ConfigChange type (not fully implemented)
+                    data.extend_from_slice(&0u32.to_le_bytes()); // empty payload
+                }
+            }
+        }
+
+        data
+    }
+
+    /// Deserialize log entries from bytes
+    fn deserialize_log(&self, data: &[u8]) -> AllocVec<LogEntry<String>> {
+        let mut log = AllocVec::new();
+
+        if data.len() < 8 {
+            return log;
+        }
+
+        let count = u64::from_le_bytes([
+            data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7],
+        ]) as usize;
+
+        let mut offset = 8;
+
+        for _ in 0..count {
+            if offset + 8 > data.len() {
+                break;
+            }
+
+            let term = u64::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+                data[offset + 4],
+                data[offset + 5],
+                data[offset + 6],
+                data[offset + 7],
+            ]);
+            offset += 8;
+
+            if offset >= data.len() {
+                break;
+            }
+
+            let entry_type = data[offset];
+            offset += 1;
+
+            if offset + 4 > data.len() {
+                break;
+            }
+
+            let payload_len = u32::from_le_bytes([
+                data[offset],
+                data[offset + 1],
+                data[offset + 2],
+                data[offset + 3],
+            ]) as usize;
+            offset += 4;
+
+            if entry_type == 0 {
+                // Command
+                if offset + payload_len > data.len() {
+                    break;
+                }
+
+                if let Ok(payload) = String::from_utf8(data[offset..offset + payload_len].to_vec())
+                {
+                    log.push(LogEntry {
+                        term,
+                        entry_type: EntryType::Command(payload),
+                    });
+                }
+                offset += payload_len;
+            } else {
+                // ConfigChange (skip for now)
+                offset += payload_len;
+            }
+        }
+
+        log
+    }
+
+    /// Write data to file via semihosting using hio module
+    fn write_file(&self, path: &[u8], data: &[u8]) -> Result<(), ()> {
+        use cortex_m_semihosting::hio;
+
+        // Convert path to string for hio
+        let path_str = core::str::from_utf8(path).map_err(|_| ())?;
+
+        // Use hstdout for debugging
+        if let Ok(mut stdout) = hio::hstdout() {
+            let _ = writeln!(
+                stdout,
+                "Writing {} bytes to {}",
+                data.len(),
+                path_str.trim_end_matches('\0')
+            );
+        }
+
+        // For cortex-m-semihosting 0.5, we need to use raw syscalls
+        // The hio module doesn't provide file operations, only stdout/stderr
+        // We'll use the syscall! macro which provides direct access to syscalls
+
+        unsafe {
+            // SYS_OPEN (0x01): Open file
+            let mode = 0x0000_0004 | 0x0000_0002; // MODE_WRITE | MODE_BINARY
+            let fd = cortex_m_semihosting::syscall!(OPEN, path.as_ptr(), mode, path.len() - 1);
+
+            if fd == usize::MAX {
+                return Err(());
+            }
+
+            // SYS_WRITE (0x05): Write to file
+            let result = cortex_m_semihosting::syscall!(WRITE, fd, data.as_ptr(), data.len());
+
+            // SYS_CLOSE (0x02): Close file
+            cortex_m_semihosting::syscall!(CLOSE, fd);
+
+            if result == 0 {
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+    }
+
+    /// Read data from file via semihosting
+    fn read_file(&self, path: &[u8]) -> Result<AllocVec<u8>, ()> {
+        use cortex_m_semihosting::hio;
+
+        let path_str = core::str::from_utf8(path).map_err(|_| ())?;
+
+        if let Ok(mut stdout) = hio::hstdout() {
+            let _ = writeln!(stdout, "Reading from {}", path_str.trim_end_matches('\0'));
+        }
+
+        unsafe {
+            // SYS_OPEN (0x01): Open file for reading
+            let mode = 0x0000_0000; // MODE_READ
+            let fd = cortex_m_semihosting::syscall!(OPEN, path.as_ptr(), mode, path.len() - 1);
+
+            if fd == usize::MAX {
+                return Err(());
+            }
+
+            // SYS_FLEN (0x0C): Get file length
+            let len = cortex_m_semihosting::syscall!(FLEN, fd);
+
+            if len == usize::MAX {
+                cortex_m_semihosting::syscall!(CLOSE, fd);
+                return Err(());
+            }
+
+            // Read data
+            #[allow(clippy::slow_vector_initialization)]
+            let mut data = AllocVec::with_capacity(len);
+            data.resize(len, 0);
+
+            let bytes_read = cortex_m_semihosting::syscall!(READ, fd, data.as_mut_ptr(), len);
+
+            // SYS_CLOSE (0x02): Close file
+            cortex_m_semihosting::syscall!(CLOSE, fd);
+
+            if bytes_read == 0 {
+                Ok(data)
+            } else {
+                Err(())
+            }
         }
     }
 }
@@ -87,6 +424,7 @@ impl Storage for SemihostingStorage {
 
     fn set_current_term(&mut self, term: Term) {
         self.current_term = term;
+        self.persist_metadata(); // Persist after change
     }
 
     fn voted_for(&self) -> Option<NodeId> {
@@ -95,6 +433,7 @@ impl Storage for SemihostingStorage {
 
     fn set_voted_for(&mut self, vote: Option<NodeId>) {
         self.voted_for = vote;
+        self.persist_metadata(); // Persist after change
     }
 
     fn last_log_index(&self) -> LogIndex {
@@ -150,8 +489,9 @@ impl Storage for SemihostingStorage {
 
     fn append_entries(&mut self, entries: &[LogEntry<Self::Payload>]) {
         for entry in entries {
-            let _ = self.log.push(entry.clone());
+            self.log.push(entry.clone());
         }
+        self.persist_log(); // Persist after change
     }
 
     fn truncate_after(&mut self, index: LogIndex) {
@@ -162,12 +502,14 @@ impl Storage for SemihostingStorage {
             let offset = (index - self.first_log_index + 1) as usize;
             self.log.truncate(offset);
         }
+        self.persist_log(); // Persist after change
     }
 
     // === Snapshot Methods ===
 
     fn save_snapshot(&mut self, snapshot: raft_core::snapshot::Snapshot<Self::SnapshotData>) {
         self.snapshot = Some(snapshot);
+        self.persist_snapshot(); // Persist after change
     }
 
     fn load_snapshot(&self) -> Option<raft_core::snapshot::Snapshot<Self::SnapshotData>> {
@@ -224,6 +566,7 @@ impl Storage for SemihostingStorage {
                 data: snapshot_data,
             };
             self.snapshot = Some(snapshot);
+            self.persist_snapshot(); // Persist after change
             Ok(())
         } else {
             // Multi-chunk not supported in this simple implementation
@@ -240,6 +583,7 @@ impl Storage for SemihostingStorage {
             .build()
             .map_err(|_| raft_core::snapshot::SnapshotError::CorruptData)?;
         self.snapshot = Some(raft_core::snapshot::Snapshot { metadata, data });
+        self.persist_snapshot(); // Persist after change
         Ok(())
     }
 
@@ -256,14 +600,15 @@ impl Storage for SemihostingStorage {
             self.log.clear();
         } else {
             // Shift remaining entries to beginning
-            let mut new_log = Vec::new();
+            let mut new_log = AllocVec::new();
             for i in num_to_discard..self.log.len() {
-                let _ = new_log.push(self.log[i].clone());
+                new_log.push(self.log[i].clone());
             }
             self.log = new_log;
         }
 
         self.first_log_index = index;
+        self.persist_log(); // Persist after change
     }
 
     fn first_log_index(&self) -> LogIndex {
