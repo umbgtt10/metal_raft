@@ -21,42 +21,58 @@
 ```
 embassy/
 ├── src/
-│   ├── main.rs                    # Entry point, spawns cluster
-│   ├── embassy_node.rs            # Main Raft node loop
-│   ├── transport/
-│   │   ├── mod.rs                 # Feature bifurcation point
-│   │   ├── async_transport.rs     # Transport trait
-│   │   ├── embassy_transport.rs   # Raft-to-async bridge
-│   │   ├── channel/               # In-memory transport
-│   │   │   ├── transport.rs
-│   │   │   └── setup.rs
-│   │   └── udp/                   # UDP network transport
-│   │       ├── transport.rs       # UDP async implementation
-│   │       ├── driver.rs          # Mock Ethernet driver
-│   │       ├── serde.rs           # Wire protocol
-│   │       ├── config.rs          # Network configuration
-│   │       └── setup.rs           # Cluster initialization
-│   ├── embassy_storage.rs         # In-memory Raft log
-│   ├── embassy_timer.rs           # Election/heartbeat timers
+│   ├── main.rs                       # Entry point, spawns cluster
+│   ├── embassy_node.rs               # Main Raft node loop (generic over T, S)
+│   ├── configurations/               # Feature-gated configurations
+│   │   ├── mod.rs                    # Single location for all cfg logic
+│   │   ├── memory_channel/           # In-memory storage + channel transport
+│   │   │   ├── mod.rs
+│   │   │   ├── setup.rs              # Cluster initialization
+│   │   │   ├── storage.rs            # In-memory storage implementation
+│   │   │   └── transport.rs          # Channel-based transport
+│   │   └── semihosting_udp/          # Persistent storage + UDP transport
+│   │       ├── mod.rs
+│   │       ├── setup.rs              # Cluster initialization
+│   │       └── storage/              # Semihosting-based storage
+│   │           ├── mod.rs
+│   │           └── storage.rs        # File I/O via syscalls
+│   ├── embassy_storage.rs            # Storage trait definition
+│   ├── embassy_timer.rs              # Election/heartbeat timers
+│   ├── transport/                    # Transport implementations
+│   │   ├── async_transport.rs        # Transport trait
+│   │   ├── embassy_transport.rs      # Raft-to-async bridge
+│   │   ├── channel_transport.rs      # In-memory channels
+│   │   └── udp/                      # UDP network transport
+│   │       ├── transport.rs
+│   │       ├── driver.rs
+│   │       ├── serde.rs
+│   │       └── config.rs
 │   └── [other adapters]
+├── persistency/                      # Persistent storage files (gitignored)
 └── Cargo.toml
 ```
 
-### Transport Bifurcation Pattern
+### Plug-in Architecture Pattern
 
-The project implements a **clean separation** between two transport modes:
+The project implements a **compile-time dependency injection** system with four configuration modes:
 
-1. **Channel Transport** (`--features channel-transport`): In-memory channels for fast simulation
-2. **UDP Transport** (`--features udp-transport`): Full network stack with simulated Ethernet
+1. **In-Memory + Channel** (`--features in-memory-storage,channel-transport`): Fast simulation, no persistence
+2. **In-Memory + UDP** (`--features in-memory-storage,udp-transport`): Network simulation, no persistence
+3. **Semihosting + Channel** (`--features semihosting-storage,channel-transport`): Persistent storage, fast transport
+4. **Semihosting + UDP** (default: `--features semihosting-storage,udp-transport`): Full persistence + networking
 
-The `transport/mod.rs` module conditionally compiles the active transport and re-exports a unified `setup` interface, making `main.rs` completely transport-agnostic:
+The `configurations/mod.rs` module contains **all conditional compilation logic** (the only file with `#[cfg(...)]` attributes). It re-exports the appropriate `setup` module based on active features:
 
 ```rust
-// main.rs doesn't know or care which transport is active
-transport::setup::initialize_cluster(spawner, cancel.clone()).await;
+// main.rs is completely configuration-agnostic - zero cfg attributes!
+configurations::setup::initialize_cluster(spawner, cancel, observer_level).await;
 ```
 
-**Features are mutually exclusive** by design (enforced at compile-time).
+**Benefits:**
+- Application code completely decoupled from configuration selection
+- Clean plug-in pattern: swap storage + transport via Cargo features
+- Zero runtime cost via monomorphization
+- Features are mutually exclusive (enforced at compile-time)
 
 ## Running the Simulation
 
@@ -78,22 +94,42 @@ transport::setup::initialize_cluster(spawner, cancel.clone()).await;
 
 ### Quick Start
 
-**UDP Transport (Default):**
+**UDP Transport + Persistent Storage (Default):**
 ```powershell
 # From embassy directory
-cargo run --release --features udp-transport
+cargo run --release --features semihosting-storage,udp-transport
 
 # Or use the script
 .\scripts\run_udp.ps1
 ```
 
-**Channel Transport:**
+**Channel Transport + In-Memory Storage:**
 ```powershell
-cargo run --release --features channel-transport --no-default-features
+cargo run --release --features in-memory-storage,channel-transport --no-default-features
 
 # Or use the script
 .\scripts\run_channel.ps1
 ```
+
+### Persistent Storage
+
+When using `--features semihosting-storage`, Raft state is persisted to files via QEMU semihosting:
+
+**Storage Location:** `embassy/persistency/`
+
+**Files Created:**
+- `raft_node_{1-5}_metadata.bin` - Current term, voted_for (17 bytes each)
+- `raft_node_{1-5}_log.bin` - Serialized log entries
+- `raft_node_{1-5}_snapshot_metadata.bin` - Snapshot metadata
+- `raft_node_{1-5}_snapshot_data.bin` - Snapshot data
+
+**Implementation:** Uses `cortex-m-semihosting` syscalls (OPEN, WRITE, READ, FLEN, CLOSE) for file I/O through QEMU's semihosting interface.
+
+**Persistence Guarantees:**
+- Metadata written on term change or vote
+- Log entries written on append
+- Snapshots written on creation
+- Files survive cluster restarts (crash recovery)
 
 ### Expected Output
 
@@ -149,14 +185,16 @@ All coordinated via `embassy-executor` with bounded channels for backpressure.
 
 ## Development
 
-### Building for Different Features
+### Building for Different Configurations
 
 ```bash
-# Check compilation
-cargo check --target thumbv7em-none-eabihf --features udp-transport
-cargo check --target thumbv7em-none-eabihf --features channel-transport --no-default-features
+# Check all configuration combinations
+cargo check --target thumbv7em-none-eabihf --features semihosting-storage,udp-transport
+cargo check --target thumbv7em-none-eabihf --features in-memory-storage,channel-transport --no-default-features
+cargo check --target thumbv7em-none-eabihf --features semihosting-storage,channel-transport --no-default-features
+cargo check --target thumbv7em-none-eabihf --features in-memory-storage,udp-transport --no-default-features
 
-# Build release binary
+# Build release binary (default: semihosting-storage + udp-transport)
 cargo build --release --target thumbv7em-none-eabihf
 
 # Run tests (host environment)
@@ -171,14 +209,14 @@ The codebase follows embedded best practices:
 - ✅ Bounded memory usage
 - ✅ Feature-gated optional dependencies
 - ✅ Compile-time mutual exclusivity enforcement
+- ✅ All conditional compilation isolated to `configurations/mod.rs`
 
 ### Limitations
 
 This is a **proof-of-concept**, not production code:
 - Fixed 5-node cluster (hardcoded)
-- No persistent storage (log resets on restart)
-- No log compaction/snapshotting
-- No dynamic cluster membership
+- No log compaction/snapshotting yet (core supports it, embassy doesn't implement)
+- No dynamic cluster membership (single-server changes implemented in core)
 - QEMU-only (not tested on real hardware)
 
 ### Validated Features
@@ -189,6 +227,8 @@ This is a **proof-of-concept**, not production code:
 - ✅ **Client Request Routing**: Followers transparently forward to leader
 - ✅ **Wait-for-Commit**: Clients block until replication completes
 - ✅ **State Machine Application**: Committed entries applied in order
+- ✅ **Persistent Storage**: Optional file-backed storage via semihosting
+- ✅ **Graceful Shutdown**: Broadcast cancellation to all nodes
 
 ## Project Goals
 
@@ -196,20 +236,23 @@ This is a **proof-of-concept**, not production code:
 
 1. **Prove Raft can run in `no_std`**: Demonstrated with a working 5-node cluster
 2. **Real UDP networking**: Full TCP/IP stack via embassy-net (not just in-memory channels)
-3. **Clean architecture**: Transport abstraction allows easy feature switching
+3. **Clean architecture**: Storage and transport abstractions with plug-in pattern
 4. **Embassy integration**: Proper use of async tasks, timers, and channels
-5. **Scalable structure**: Bifurcation pattern ready for additional transports (UART, CAN, etc.)
+5. **Modular configuration**: Compile-time dependency injection via feature flags
 6. **Leader election**: Randomized timeouts ensure fast convergence (typically 3-5 terms)
 7. **Log replication**: Commands replicated to majority before acknowledgment
 8. **Client request handling**: Transparent forwarding from followers to leader
 9. **Commit-based acknowledgments**: Clients notified only after quorum replication
+10. **Persistent storage**: File-backed Raft state via semihosting (optional)
+11. **Graceful shutdown**: Broadcast cancellation mechanism for all nodes
+12. **Zero-cost abstractions**: Monomorphization ensures no runtime overhead
 
 ### Future Enhancements (Out of Scope)
 
 - [ ] Run on real hardware (STM32, nRF52, etc.)
-- [ ] Persistent storage (flash driver integration)
-- [ ] Dynamic cluster membership
-- [ ] Log compaction/snapshotting
+- [ ] Flash driver integration (replace semihosting)
+- [ ] Embassy implementation of snapshotting (core supports it)
+- [ ] Embassy implementation of dynamic membership (core supports single-server changes)
 - [ ] Network partition simulation
 
 ## Related Projects
