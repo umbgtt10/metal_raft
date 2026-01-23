@@ -17,12 +17,11 @@ pub mod cluster;
 pub mod config;
 
 pub mod collections;
+pub mod configurations;
 pub mod embassy_node;
 pub mod embassy_observer;
 pub mod embassy_state_machine;
-pub mod embassy_storage;
 pub mod embassy_timer;
 pub mod heap;
 pub mod led_state;
 pub mod time_driver;
-pub mod transport;

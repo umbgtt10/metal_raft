@@ -4,7 +4,7 @@
 
 use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
-use crate::transport::async_transport::AsyncTransport;
+use crate::configurations::transport::async_transport::AsyncTransport;
 use alloc::string::String;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};

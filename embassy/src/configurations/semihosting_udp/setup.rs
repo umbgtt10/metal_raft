@@ -4,14 +4,14 @@
 
 use crate::cancellation_token::CancellationToken;
 use crate::cluster::RaftCluster;
+use crate::configurations::storage::semihosting::SemihostingStorage;
+use crate::configurations::transport::udp::config::{self, get_node_config};
+use crate::configurations::transport::udp::driver::{MockNetDriver, NetworkBus};
+use crate::configurations::transport::udp::transport::{self, UdpTransport};
 use crate::info;
 use alloc::vec::Vec;
 use embassy_executor::Spawner;
 use raft_core::observer::EventLevel;
-
-use crate::transport::udp::config::{self, get_node_config};
-use crate::transport::udp::driver::{MockNetDriver, NetworkBus};
-use crate::transport::udp::transport::{self, UdpTransport};
 
 pub async fn initialize_cluster(
     spawner: Spawner,
@@ -121,10 +121,14 @@ pub async fn initialize_cluster(
         // UdpTransport now takes (node_id, outbound_sender, inbound_receiver)
         let transport_impl = UdpTransport::new(node_id_u64, outbox_sender, inbox_receiver);
 
+        // Create persistent storage for this node
+        let storage = SemihostingStorage::new(node_id_u64);
+
         // Create the node
         let client_rx = crate::cluster::CLIENT_CHANNELS[(node_id_u64 - 1) as usize].receiver();
         let node = crate::embassy_node::EmbassyNode::new(
             node_id_u64,
+            storage,
             transport_impl,
             client_rx,
             observer_level,
@@ -147,7 +151,10 @@ pub async fn initialize_cluster(
 #[embassy_executor::task(pool_size = 5)]
 async fn net_stack_task(
     _node_id: u8,
-    mut runner: embassy_net::Runner<'static, crate::transport::udp::driver::MockNetDriver>,
+    mut runner: embassy_net::Runner<
+        'static,
+        crate::configurations::transport::udp::driver::MockNetDriver,
+    >,
 ) {
     runner.run().await
 }
@@ -155,7 +162,10 @@ async fn net_stack_task(
 // UDP Raft node task wrapper
 #[embassy_executor::task(pool_size = 5)]
 async fn udp_raft_node_task(
-    node: crate::embassy_node::EmbassyNode<crate::transport::udp::transport::UdpTransport>,
+    node: crate::embassy_node::EmbassyNode<
+        crate::configurations::transport::udp::transport::UdpTransport,
+        SemihostingStorage,
+    >,
     cancel: CancellationToken,
 ) {
     node.run(cancel).await
@@ -166,13 +176,13 @@ async fn udp_raft_node_task(
 async fn udp_listener_task(
     node_id: u64,
     stack: embassy_net::Stack<'static>,
-    sender: crate::transport::udp::transport::RaftSender,
+    sender: crate::configurations::transport::udp::transport::RaftSender,
 ) {
     if node_id > 255 {
         info!("Invalid node_id for listener: {}", node_id);
         return;
     }
-    crate::transport::udp::transport::run_udp_listener(node_id, stack, sender).await
+    crate::configurations::transport::udp::transport::run_udp_listener(node_id, stack, sender).await
 }
 
 // UDP Sender Task Wrapper
@@ -180,11 +190,11 @@ async fn udp_listener_task(
 async fn udp_sender_task(
     node_id: u64,
     stack: embassy_net::Stack<'static>,
-    receiver: crate::transport::udp::transport::RaftReceiver,
+    receiver: crate::configurations::transport::udp::transport::RaftReceiver,
 ) {
     if node_id > 255 {
         info!("Invalid node_id for sender: {}", node_id);
         return;
     }
-    crate::transport::udp::transport::run_udp_sender(node_id, stack, receiver).await
+    crate::configurations::transport::udp::transport::run_udp_sender(node_id, stack, receiver).await
 }

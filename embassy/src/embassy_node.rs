@@ -17,13 +17,12 @@ use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::collections::embassy_map_collection::EmbassyMapCollection;
 use crate::collections::embassy_node_collection::EmbassyNodeCollection;
 use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
+use crate::configurations::transport::async_transport::AsyncTransport;
+use crate::configurations::transport::embassy_transport::EmbassyTransport;
 use crate::embassy_observer::EmbassyObserver;
-use crate::embassy_state_machine::EmbassyStateMachine;
-use crate::embassy_storage::EmbassyStorage;
+use crate::embassy_state_machine::{EmbassySnapshotData, EmbassyStateMachine};
 use crate::embassy_timer::{EmbassyClock, EmbassyTimer};
 use crate::led_state::LedState;
-use crate::transport::async_transport::AsyncTransport;
-use crate::transport::embassy_transport::EmbassyTransport;
 
 use raft_core::{
     collections::node_collection::NodeCollection,
@@ -35,13 +34,14 @@ use raft_core::{
     observer::EventLevel,
     raft_node::RaftNode,
     raft_node_builder::RaftNodeBuilder,
+    storage::Storage,
     timer_service::TimerService,
     types::{LogIndex, NodeId},
 };
 
-type EmbassyRaftNode = RaftNode<
+type EmbassyRaftNode<S> = RaftNode<
     EmbassyTransport,
-    EmbassyStorage,
+    S,
     String,
     EmbassyStateMachine,
     EmbassyNodeCollection,
@@ -55,9 +55,17 @@ type EmbassyRaftNode = RaftNode<
 >;
 
 /// Embassy Raft node - encapsulates all node state and behavior
-pub struct EmbassyNode<T: AsyncTransport> {
+pub struct EmbassyNode<
+    T: AsyncTransport,
+    S: Storage<
+        Payload = String,
+        LogEntryCollection = EmbassyLogEntryCollection,
+        SnapshotData = EmbassySnapshotData,
+        SnapshotChunk = HeaplessChunkVec<512>,
+    >,
+> {
     node_id: NodeId,
-    raft_node: EmbassyRaftNode,
+    raft_node: EmbassyRaftNode<S>,
     transport: EmbassyTransport,
     async_transport: T,
     client_rx: Receiver<'static, CriticalSectionRawMutex, ClientRequest, 4>,
@@ -66,17 +74,25 @@ pub struct EmbassyNode<T: AsyncTransport> {
         BTreeMap<LogIndex, Sender<'static, CriticalSectionRawMutex, Result<(), ClusterError>, 1>>,
 }
 
-impl<T: AsyncTransport> EmbassyNode<T> {
+impl<
+        T: AsyncTransport,
+        S: Storage<
+                Payload = String,
+                LogEntryCollection = EmbassyLogEntryCollection,
+                SnapshotData = EmbassySnapshotData,
+                SnapshotChunk = HeaplessChunkVec<512>,
+            > + Clone,
+    > EmbassyNode<T, S>
+{
     /// Create a new Embassy Raft node
     pub fn new(
         node_id: NodeId,
+        storage: S,
         async_transport: T,
         client_rx: Receiver<'static, CriticalSectionRawMutex, ClientRequest, 4>,
         observer_level: EventLevel,
     ) -> Self {
         info!("Node {} initializing...", node_id);
-
-        let storage = EmbassyStorage::new();
         let timer = EmbassyTimer::new();
         let transport = EmbassyTransport::new();
         let state_machine = EmbassyStateMachine::default();

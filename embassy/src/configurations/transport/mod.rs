@@ -12,11 +12,5 @@ pub mod embassy_transport;
 #[cfg(feature = "channel-transport")]
 pub mod channel;
 
-#[cfg(feature = "channel-transport")]
-pub use channel::setup;
-
 #[cfg(feature = "udp-transport")]
 pub mod udp;
-
-#[cfg(feature = "udp-transport")]
-pub use udp::setup;

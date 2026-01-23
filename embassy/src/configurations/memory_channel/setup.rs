@@ -4,10 +4,11 @@
 
 use crate::cancellation_token::CancellationToken;
 use crate::cluster::RaftCluster;
+use crate::configurations::storage::in_memory::InMemoryStorage;
+use crate::configurations::transport::channel::transport::ChannelTransportHub;
+use crate::configurations::transport::channel::ChannelTransport;
 use crate::embassy_node::EmbassyNode;
 use crate::info;
-use crate::transport::channel::transport::ChannelTransportHub;
-use crate::transport::channel::ChannelTransport;
 use embassy_executor::Spawner;
 use raft_core::observer::EventLevel;
 
@@ -29,10 +30,14 @@ pub async fn initialize_cluster(
         // Create transport for this node from the hub
         let transport = hub.create_transport(node_id_u64);
 
+        // Create storage for this node
+        let storage = InMemoryStorage::new();
+
         // Create the node
         let client_rx = crate::cluster::CLIENT_CHANNELS[(node_id_u64 - 1) as usize].receiver();
         let node = crate::embassy_node::EmbassyNode::new(
             node_id_u64,
+            storage,
             transport,
             client_rx,
             observer_level,
@@ -50,6 +55,9 @@ pub async fn initialize_cluster(
 
 // Channel Raft Wrapper
 #[embassy_executor::task(pool_size = 5)]
-async fn channel_raft_node_task(node: EmbassyNode<ChannelTransport>, cancel: CancellationToken) {
+async fn channel_raft_node_task(
+    node: EmbassyNode<ChannelTransport, InMemoryStorage>,
+    cancel: CancellationToken,
+) {
     node.run(cancel).await
 }

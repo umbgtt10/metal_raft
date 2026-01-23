@@ -35,9 +35,11 @@ embassy-net-driver = { version = "0.2", optional = true }
 smoltcp = { version = "0.12.0", default-features = false, features = ["proto-ipv4"], optional = true }
 
 [features]
-default = ["udp-transport"]
+default = ["semihosting-storage", "udp-transport"]
 channel-transport = []
 udp-transport = ["embassy-net", "embassy-net-driver", "smoltcp"]
+in-memory-storage = []
+semihosting-storage = []
 
 [[bin]]
 name = "embassy"

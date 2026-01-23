@@ -6,8 +6,8 @@
 
 use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
-use crate::transport::async_transport::AsyncTransport;
-use crate::transport::udp::serde_raft_message::WireRaftMsg;
+use crate::configurations::transport::async_transport::AsyncTransport;
+use crate::configurations::transport::udp::serde_raft_message::WireRaftMsg;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;

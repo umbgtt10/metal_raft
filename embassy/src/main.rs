@@ -17,6 +17,7 @@ pub mod cancellation_token;
 pub mod cluster;
 pub mod collections;
 pub mod config;
+pub mod configurations;
 pub mod embassy_node;
 pub mod embassy_observer;
 pub mod embassy_state_machine;
@@ -25,7 +26,6 @@ pub mod embassy_timer;
 pub mod heap;
 pub mod led_state;
 pub mod time_driver;
-pub mod transport;
 
 use cancellation_token::CancellationToken;
 
@@ -48,7 +48,7 @@ async fn main(spawner: Spawner) {
 
     // Initialize cluster (handles all network/channel setup internally)
     let cluster =
-        transport::setup::initialize_cluster(spawner, cancel.clone(), observer_level).await;
+        configurations::setup::initialize_cluster(spawner, cancel.clone(), observer_level).await;
 
     info!("All nodes started. Waiting for leader election...");
 
