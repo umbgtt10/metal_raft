@@ -21,9 +21,15 @@ pub(crate) static CLIENT_CHANNELS: [Channel<CriticalSectionRawMutex, ClientReque
     Channel::new(),
 ];
 
-pub(crate) static CLIENT_RESPONSE_CHANNEL: Channel<
+pub(crate) static CLIENT_WRITE_RESPONSE_CHANNEL: Channel<
     CriticalSectionRawMutex,
     Result<(), ClusterError>,
+    1,
+> = Channel::new();
+
+pub(crate) static CLIENT_READ_RESPONSE_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    Result<Option<String>, ClusterError>,
     1,
 > = Channel::new();
 
@@ -36,6 +42,12 @@ pub enum ClientRequest {
     Write {
         payload: String,
         response_tx: Sender<'static, CriticalSectionRawMutex, Result<(), ClusterError>, 1>,
+    },
+    /// Read value from state machine
+    Read {
+        key: String,
+        response_tx:
+            Sender<'static, CriticalSectionRawMutex, Result<Option<String>, ClusterError>, 1>,
     },
     /// Get current leader (for client redirection)
     GetLeader,
@@ -84,11 +96,11 @@ impl RaftCluster {
     /// Sends to a random node - Raft protocol handles forwarding to leader
     pub async fn submit_command(&self, payload: String) -> Result<(), ClusterError> {
         // Clear any previous responses
-        while CLIENT_RESPONSE_CHANNEL.try_receive().is_ok() {}
+        while CLIENT_WRITE_RESPONSE_CHANNEL.try_receive().is_ok() {}
 
         let req = ClientRequest::Write {
             payload,
-            response_tx: CLIENT_RESPONSE_CHANNEL.sender(),
+            response_tx: CLIENT_WRITE_RESPONSE_CHANNEL.sender(),
         };
 
         let mut sent = false;
@@ -108,8 +120,47 @@ impl RaftCluster {
 
         // Wait for response
         // In a real system, we'd use IDs to match response to request
-        match embassy_time::with_timeout(Duration::from_secs(10), CLIENT_RESPONSE_CHANNEL.receive())
-            .await
+        match embassy_time::with_timeout(
+            Duration::from_secs(10),
+            CLIENT_WRITE_RESPONSE_CHANNEL.receive(),
+        )
+        .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(ClusterError::Timeout),
+        }
+    }
+
+    /// Read a value from the state machine
+    /// Reads are served by the leader (linearizable reads via leases)
+    pub async fn read_value(&self, key: &str) -> Result<Option<String>, ClusterError> {
+        // Clear any previous responses
+        while CLIENT_READ_RESPONSE_CHANNEL.try_receive().is_ok() {}
+
+        let req = ClientRequest::Read {
+            key: String::from(key),
+            response_tx: CLIENT_READ_RESPONSE_CHANNEL.sender(),
+        };
+
+        // Try to send read request to any node
+        let mut sent = false;
+        for channel in self.client_channels.iter() {
+            if channel.try_send(req.clone()).is_ok() {
+                sent = true;
+                break;
+            }
+        }
+
+        if !sent {
+            return Err(ClusterError::ChannelFull);
+        }
+
+        // Wait for response (with timeout)
+        match embassy_time::with_timeout(
+            Duration::from_secs(5),
+            CLIENT_READ_RESPONSE_CHANNEL.receive(),
+        )
+        .await
         {
             Ok(result) => result,
             Err(_) => Err(ClusterError::Timeout),

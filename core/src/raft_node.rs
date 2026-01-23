@@ -14,7 +14,7 @@ use crate::{
         election_manager::ElectionManager,
         leader_lease::LeaderLease,
         log_replication_manager::LogReplicationManager,
-        message_handler::{ClientError, MessageHandler, MessageHandlerContext},
+        message_handler::{ClientError, MessageHandler, MessageHandlerContext, ReadError},
         snapshot_manager::SnapshotManager,
     },
     event::Event,
@@ -192,10 +192,15 @@ where
         &self.leader_lease
     }
 
-    /// Check if this node can serve linearizable reads.
-    /// Returns true if this node is the leader and has a valid lease.
-    pub fn can_serve_linearizable_reads(&self) -> bool {
-        matches!(self.role, NodeState::Leader) && self.leader_lease.is_valid()
+    pub fn read_linearizable(&mut self, key: &str) -> Result<Option<&str>, ReadError> {
+        if !matches!(self.role, NodeState::Leader) || !self.leader_lease.is_valid() {
+            return Err(ReadError::NotLeaderOrNoLease);
+        }
+
+        let value = self.state_machine.get(key);
+        self.observer
+            .state_machine_read(self.id, key, value.is_some());
+        Ok(value)
     }
 
     pub fn on_event(&mut self, event: Event<P, L, CC>)

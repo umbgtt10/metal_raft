@@ -8,7 +8,7 @@ use embassy_futures::select::{select4, Either4};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
 use embassy_time::Duration;
-use raft_core::components::message_handler::ClientError;
+use raft_core::components::message_handler::ReadError;
 
 use crate::cancellation_token::CancellationToken;
 use crate::cluster::{ClientRequest, ClusterError};
@@ -27,6 +27,7 @@ use crate::transport::embassy_transport::EmbassyTransport;
 
 use raft_core::{
     collections::node_collection::NodeCollection,
+    components::message_handler::ClientError,
     components::{
         election_manager::ElectionManager, log_replication_manager::LogReplicationManager,
     },
@@ -235,6 +236,33 @@ impl<T: AsyncTransport> EmbassyNode<T> {
                             );
                         } else {
                             // If we don't know the leader, inform client of failure
+                            let _ = response_tx.try_send(Err(ClusterError::NoLeader));
+                        }
+                    }
+                }
+            }
+            ClientRequest::Read { key, response_tx } => {
+                // Try to serve linearizable read from this node
+                match self.raft_node.read_linearizable(&key) {
+                    Ok(Some(value)) => {
+                        let _ = response_tx.try_send(Ok(Some(String::from(value))));
+                    }
+                    Ok(None) => {
+                        let _ = response_tx.try_send(Ok(None));
+                    }
+                    Err(ReadError::NotLeaderOrNoLease) => {
+                        // Cannot serve read - forward to leader
+                        let leader_id = *crate::cluster::CURRENT_LEADER.lock().await;
+
+                        if let Some(leader) = leader_id {
+                            if leader != self.node_id {
+                                let _ = crate::cluster::CLIENT_CHANNELS[leader as usize - 1]
+                                    .try_send(ClientRequest::Read { key, response_tx });
+                            } else {
+                                // We are leader but can't serve reads (no valid lease)
+                                let _ = response_tx.try_send(Err(ClusterError::NoLeader));
+                            }
+                        } else {
                             let _ = response_tx.try_send(Err(ClusterError::NoLeader));
                         }
                     }

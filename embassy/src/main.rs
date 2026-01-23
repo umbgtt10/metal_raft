@@ -68,7 +68,7 @@ async fn main(spawner: Spawner) {
     // Submit test commands
     info!("Submitting test commands...");
     for i in 1..=3 {
-        let command = alloc::format!("SET key{} value{}", i, i);
+        let command = alloc::format!("key{}=value{}", i, i);
         info!("Submitting: {}", command);
         match cluster.submit_command(command).await {
             Ok(_) => info!("Command {} committed successfully!", i),
@@ -76,6 +76,27 @@ async fn main(spawner: Spawner) {
         }
     }
     info!("All commands processed!");
+
+    // Wait for replication to complete
+    embassy_time::Timer::after(Duration::from_millis(100)).await;
+
+    // Demonstrate efficient reads: Access committed data from state machine
+    info!("Reading back committed values...");
+    for i in 1..=3 {
+        let key = alloc::format!("key{}", i);
+        match cluster.read_value(&key).await {
+            Ok(Some(value)) => {
+                info!("READ {} = {}", key, value);
+            }
+            Ok(None) => {
+                info!("READ {} = <not found>", key);
+            }
+            Err(e) => {
+                info!("READ {} failed: {:?}", key, e);
+            }
+        }
+    }
+    info!("All reads completed!");
 
     // Run for additional time to observe replication
     embassy_time::Timer::after(Duration::from_secs(1)).await;

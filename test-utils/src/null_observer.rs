@@ -98,6 +98,12 @@ where
     fn higher_term_discovered(&mut self, _: NodeId, _: Term, _: Term, _: NodeId) {}
 
     fn configuration_change_applied(&mut self, _: NodeId, _: NodeId, _: bool) {}
+
+    #[inline]
+    fn state_machine_applied(&mut self, _: NodeId, _: LogIndex, _: &Self::Payload) {}
+
+    #[inline]
+    fn state_machine_read(&mut self, _: NodeId, _: &str, _: bool) {}
 }
 
 impl<P, L> Default for NullObserver<P, L>

@@ -59,6 +59,8 @@ pub fn handle_append_entries<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
         ctx.storage,
         ctx.state_machine,
         ctx.role,
+        ctx.observer,
+        *ctx.id,
     );
     // Note: apply_config_changes logic is in admin.rs. But we need it here?
     // This is a circular dependency. Admin -> Common?
@@ -107,6 +109,8 @@ pub fn handle_append_entries_response<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
             ctx.storage,
             ctx.state_machine,
             ctx.config_manager.config(),
+            *ctx.id,
+            ctx.observer,
             *ctx.id,
         );
         let new_commit_index = ctx.replication.commit_index();

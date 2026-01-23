@@ -277,4 +277,21 @@ impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Observer for EmbassyO
             info!("Node {} config change: {} {}", node, target, action);
         }
     }
+
+    fn state_machine_applied(&mut self, node: NodeId, index: LogIndex, _payload: &Self::Payload) {
+        if self.level >= EventLevel::Debug {
+            info!("Node {} applied entry {} to state machine", node, index);
+        }
+    }
+
+    fn state_machine_read(&mut self, node: NodeId, key: &str, found: bool) {
+        if self.level >= EventLevel::Debug {
+            info!(
+                "Node {} served read: key={} {}",
+                node,
+                key,
+                if found { "✓" } else { "✗" }
+            );
+        }
+    }
 }

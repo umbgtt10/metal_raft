@@ -6,7 +6,7 @@ use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
 use alloc::string::String;
 use heapless::index_map::FnvIndexMap;
 use heapless::Vec;
-use raft_core::state_machine::StateMachine;
+use raft_core::{snapshot::SnapshotError, state_machine::StateMachine};
 
 /// Simple key-value state machine for Embassy
 #[derive(Debug, Clone)]
@@ -60,6 +60,7 @@ impl StateMachine for EmbassyStateMachine {
         // Simple format: "key=value"
         if let Some((key, value)) = payload.split_once('=') {
             let _ = self.data.insert(String::from(key), String::from(value));
+            // Debug logging removed - all 5 nodes apply each entry (expected behavior)
         }
     }
 
@@ -97,7 +98,7 @@ impl StateMachine for EmbassyStateMachine {
 
         // Parse snapshot data
         let data_str = core::str::from_utf8(&snapshot_data.data)
-            .map_err(|_| raft_core::snapshot::SnapshotError::DeserializationFailed)?;
+            .map_err(|_| SnapshotError::DeserializationFailed)?;
 
         for line in data_str.lines() {
             if let Some((key, value)) = line.split_once('=') {

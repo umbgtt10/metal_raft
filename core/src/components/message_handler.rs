@@ -40,6 +40,12 @@ pub enum ClientError {
     NotLeader,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReadError {
+    /// Node is not the leader or does not have a valid lease
+    NotLeaderOrNoLease,
+}
+
 /// MessageHandler handles all Raft message processing.
 /// This is a zero-sized stateless type that separates message handling logic from RaftNode.
 pub struct MessageHandler<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>

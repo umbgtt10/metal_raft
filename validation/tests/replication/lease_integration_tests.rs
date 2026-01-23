@@ -114,9 +114,9 @@ fn test_lease_enables_linearizable_reads() {
     cluster.deliver_messages();
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
 
-    // Initially no lease, reads should work but be slower
-    let leader = cluster.get_node(1);
-    assert!(!leader.can_serve_linearizable_reads());
+    // Initially no lease, reads should fail
+    let leader = cluster.get_node_mut(1);
+    assert!(leader.read_linearizable("test_key").is_err());
 
     // Submit command to establish lease
     cluster.clear_message_log();
@@ -125,7 +125,7 @@ fn test_lease_enables_linearizable_reads() {
         .on_event(Event::ClientCommand("establish_lease".to_string()));
     cluster.deliver_messages();
 
-    // Now lease should be valid and linearizable reads enabled
-    let leader = cluster.get_node(1);
-    assert!(leader.can_serve_linearizable_reads());
+    // Now lease should be valid and linearizable reads should succeed
+    let leader = cluster.get_node_mut(1);
+    assert!(leader.read_linearizable("test_key").is_ok());
 }

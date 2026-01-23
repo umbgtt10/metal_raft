@@ -198,4 +198,12 @@ pub trait Observer {
 
     /// Configuration change applied (AddServer or RemoveServer)
     fn configuration_change_applied(&mut self, node: NodeId, target: NodeId, added: bool);
+
+    // === State Machine Events (Debug) ===
+
+    /// Entry applied to state machine
+    fn state_machine_applied(&mut self, node: NodeId, index: LogIndex, payload: &Self::Payload);
+
+    /// Linearizable read served from state machine
+    fn state_machine_read(&mut self, node: NodeId, key: &str, found: bool);
 }

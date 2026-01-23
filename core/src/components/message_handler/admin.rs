@@ -134,6 +134,8 @@ where
             ctx.state_machine,
             ctx.config_manager.config(),
             *ctx.id,
+            ctx.observer,
+            *ctx.id,
         );
         common::apply_config_changes(ctx, config_changes);
     }
@@ -179,6 +181,8 @@ where
             ctx.storage,
             ctx.state_machine,
             ctx.config_manager.config(),
+            *ctx.id,
+            ctx.observer,
             *ctx.id,
         );
         common::apply_config_changes(ctx, config_changes);

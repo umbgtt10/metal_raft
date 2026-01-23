@@ -23,6 +23,7 @@ use raft_test_utils::{
     in_memory_map_collection::InMemoryMapCollection,
     in_memory_node_collection::InMemoryNodeCollection,
     in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
+    null_observer::NullObserver,
 };
 
 // ============================================================
@@ -37,6 +38,7 @@ fn test_liveness_accept_entries_from_leader() {
     let mut current_term = 2;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     let entries = InMemoryLogEntryCollection::new(&[
         LogEntry {
@@ -49,7 +51,7 @@ fn test_liveness_accept_entries_from_leader() {
         },
     ]);
 
-    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         2, // term
         0, // prev_log_index
         0, // prev_log_term
@@ -58,7 +60,9 @@ fn test_liveness_accept_entries_from_leader() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     match response {
@@ -81,6 +85,7 @@ fn test_liveness_append_entries_with_config_change_emits_change() {
     let mut current_term = 2;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     let entries = InMemoryLogEntryCollection::new(&[
         LogEntry {
@@ -93,7 +98,7 @@ fn test_liveness_append_entries_with_config_change_emits_change() {
         },
     ]);
 
-    let (_response, config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (_response, config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         2, // term
         0, // prev_log_index
         0, // prev_log_term
@@ -103,6 +108,8 @@ fn test_liveness_append_entries_with_config_change_emits_change() {
         &mut storage,
         &mut state_machine,
         &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     assert_eq!(config_changes.len(), 1);
@@ -119,13 +126,14 @@ fn test_safety_reject_entries_from_stale_term() {
     let mut current_term = 5;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     let entries = InMemoryLogEntryCollection::new(&[LogEntry {
         term: 3,
         entry_type: EntryType::Command("cmd1".to_string()),
     }]);
 
-    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         3, // stale term
         0, // prev_log_index
         0, // prev_log_term
@@ -134,7 +142,9 @@ fn test_safety_reject_entries_from_stale_term() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     match response {
@@ -162,8 +172,9 @@ fn test_safety_reject_inconsistent_prev_log() {
         term: 2,
         entry_type: EntryType::Command("cmd".to_string()),
     }]);
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
-    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         2,
         5, // prev_log_index (we don't have this!)
         2, // prev_log_term
@@ -172,7 +183,9 @@ fn test_safety_reject_inconsistent_prev_log() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     match response {
@@ -198,6 +211,7 @@ fn test_safety_reject_mismatched_prev_log_term() {
     let mut current_term = 3;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     let entries = InMemoryLogEntryCollection::new(&[LogEntry {
         term: 3,
@@ -205,7 +219,7 @@ fn test_safety_reject_mismatched_prev_log_term() {
     }]);
 
     // Leader thinks our entry at index 1 has term 2 (but we have term 1)
-    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         3,
         1, // prev_log_index
         2, // prev_log_term (mismatch!)
@@ -214,7 +228,9 @@ fn test_safety_reject_mismatched_prev_log_term() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     match response {
@@ -250,6 +266,7 @@ fn test_safety_delete_conflicting_entries() {
     let mut current_term = 2;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Leader sends entry at index 2 with different term (conflict!)
     let entries = InMemoryLogEntryCollection::new(&[LogEntry {
@@ -257,7 +274,7 @@ fn test_safety_delete_conflicting_entries() {
         entry_type: EntryType::Command("new_cmd2".to_string()),
     }]);
 
-    let (_response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (_response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         2,
         1, // prev_log_index (entry 1 matches)
         1, // prev_log_term
@@ -266,7 +283,9 @@ fn test_safety_delete_conflicting_entries() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     // Should have deleted cmd3 and replaced cmd2
@@ -300,11 +319,12 @@ fn test_liveness_heartbeat_updates_commit_index() {
     let mut current_term = 2;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Empty AppendEntries (heartbeat) with leader_commit = 2
     let entries = InMemoryLogEntryCollection::new(&[]);
 
-    let (_response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (_response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         2,
         2, // prev_log_index
         2, // prev_log_term
@@ -313,7 +333,9 @@ fn test_liveness_heartbeat_updates_commit_index() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     assert_eq!(
@@ -331,10 +353,11 @@ fn test_safety_step_down_on_higher_term_append_entries() {
     let mut current_term = 2;
     let mut role = NodeState::Leader;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     let entries = InMemoryLogEntryCollection::new(&[]);
 
-    let (_response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (_response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         5, // higher term
         0,
         0,
@@ -343,7 +366,9 @@ fn test_safety_step_down_on_higher_term_append_entries() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     assert_eq!(current_term, 5, "Should update to higher term");
@@ -392,17 +417,20 @@ fn test_liveness_update_next_index_on_success() {
     replication.initialize_leader_state(peers.iter(), &storage);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Node 2 successfully replicated up to index 3
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
             2,    // from
             true, // success
             3,    // match_index
             &storage,
             &mut state_machine,
             &config,
-            1,
+            1,    // leader_id
+            &mut observer,
+            1,    // node_id
         );
 
     assert_eq!(
@@ -435,10 +463,11 @@ fn test_liveness_decrement_next_index_on_failure() {
     replication.initialize_leader_state(peers.iter(), &storage);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Node 2 rejects (log inconsistency)
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
             2,
             false, // failure
             0,
@@ -446,6 +475,8 @@ fn test_liveness_decrement_next_index_on_failure() {
             &mut state_machine,
             &config,
             1,
+            &mut observer,
+            1, // node_id
         );
 
     assert_eq!(
@@ -495,15 +526,16 @@ fn test_liveness_commit_index_advancement_on_majority() {
     replication.initialize_leader_state(peers.iter(), &storage);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Leader (self) has all 5 entries
     // Node 2 confirms up to index 3
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 3, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(2, true, 3, &storage, &mut state_machine, &config, 1, &mut observer, 1);
 
     // Node 3 confirms up to index 3
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(3, true, 3, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(3, true, 3, &storage, &mut state_machine, &config, 1, &mut observer, 1);
 
     // Now 3 out of 5 nodes (including leader) have entries up to index 3
     // Should advance commit_index to 3
@@ -515,7 +547,7 @@ fn test_liveness_commit_index_advancement_on_majority() {
 
     // Node 4 confirms up to index 5
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(4, true, 5, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(4, true, 5, &storage, &mut state_machine, &config, 1, &mut observer, 1);
 
     // Now 3 out of 5 have up to index 5 (leader, node 4, and we need one more)
     // commit_index should still be 3
@@ -527,7 +559,7 @@ fn test_liveness_commit_index_advancement_on_majority() {
 
     // Node 5 confirms up to index 4
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(5, true, 4, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(5, true, 4, &storage, &mut state_machine, &config, 1, &mut observer, 1);
 
     // Now we have: leader(5), node2(3), node3(3), node4(5), node5(4)
     // Majority (3/5) at index 4: leader, node4, node5
@@ -568,12 +600,13 @@ fn test_safety_only_commit_current_term_entries() {
     replication.initialize_leader_state(peers.iter(), &storage);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Node 2 and 3 both have up to index 2 (old term entries)
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 2, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(2, true, 2, &storage, &mut state_machine, &config, 1, &mut observer, 1);
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(3, true, 2, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(3, true, 2, &storage, &mut state_machine, &config, 1, &mut observer, 1);
 
     // Even though majority has index 2, we shouldn't commit old term entries directly
     // (Raft safety: only commit entries from current term via replication)
@@ -581,7 +614,7 @@ fn test_safety_only_commit_current_term_entries() {
 
     // Let's verify by replicating index 3
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 3, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(2, true, 3, &storage, &mut state_machine, &config, 1, &mut observer, 1);
 
     // Now majority has index 3 (current term), so commit_index should be 3
     assert_eq!(replication.commit_index(), 3);
@@ -608,16 +641,19 @@ fn test_safety_ignore_responses_from_old_term() {
     let initial_match = replication.match_index().get(2);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Response from node 2 with a really high match_index (should update)
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
             2,
             true,
             5, // Very high match index
             &storage,
             &mut state_machine,
             &config,
+            1,
+            &mut observer,
             1,
         );
 
@@ -659,13 +695,16 @@ fn test_safety_median_no_double_count_leader() {
     replication.match_index_mut().insert(3, 4);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Call advance_commit_index
-    let _: InMemoryConfigChangeCollection = replication.advance_commit_index(
+    let _: InMemoryConfigChangeCollection = replication.advance_commit_index::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
         &storage,
         &mut state_machine,
         &config,
         1, // leader_id = 1
+        &mut observer,
+        1, // node_id
     );
 
     // Commit should advance to 4 (median of [10, 3, 4] = 4)
@@ -735,6 +774,7 @@ fn test_safety_append_entries_with_exact_match() {
     let mut current_term = 2;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Leader sends same entries (idempotent append)
     let entries = InMemoryLogEntryCollection::new(&[
@@ -748,7 +788,7 @@ fn test_safety_append_entries_with_exact_match() {
         },
     ]);
 
-    let (_response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (_response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         2,
         0,
         0,
@@ -757,7 +797,9 @@ fn test_safety_append_entries_with_exact_match() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     // Should still have 2 entries (no duplicates)
@@ -784,11 +826,12 @@ fn test_safety_commit_index_never_decreases() {
     let mut current_term = 2;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // First set commit index to 2
     let entries = InMemoryLogEntryCollection::new(&[]);
 
-    let (_response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (_response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         2,
         2,
         2,
@@ -797,14 +840,16 @@ fn test_safety_commit_index_never_decreases() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     assert_eq!(replication.commit_index(), 2);
 
     // Leader sends heartbeat with lower commit index
     let entries2 = InMemoryLogEntryCollection::new(&[]);
-    let (_response2, _config_changes2) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (_response2, _config_changes2) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         2,
         2,
         2,
@@ -813,7 +858,9 @@ fn test_safety_commit_index_never_decreases() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     // commit_index should not decrease
@@ -849,10 +896,11 @@ fn test_liveness_three_node_cluster_majority() {
     replication.initialize_leader_state(peers.iter(), &storage);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Only node 2 confirms (1 follower + 1 leader = 2/3 = majority)
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 2, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(2, true, 2, &storage, &mut state_machine, &config, 1, &mut observer, 1);
 
     assert_eq!(
         replication.commit_index(),
@@ -918,8 +966,9 @@ fn test_liveness_get_append_entries_with_compacted_snapshot_point() {
 
     // Simulate that follower 2 confirmed up to index 10
     // This will set next_index[2] = 11 (one after the confirmed match)
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 10, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(2, true, 10, &storage, &mut state_machine, &config, 1, &mut observer, 1);
 
     // Now next_index[2] = 11, so prev_log_index will be 10
     let msg = replication.get_append_entries_for_follower::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(2, 3, &storage);
@@ -990,10 +1039,11 @@ fn test_safety_get_append_entries_before_snapshot_point() {
 
     // Simulate follower rejections to decrement next_index below snapshot point
     // Each rejection decrements next_index by 1
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
     for _ in 0..7 {
         // Decrement from 11 down to 4
         let _config_changes: InMemoryConfigChangeCollection = replication
-            .handle_append_entries_response(2, false, 0, &storage, &mut state_machine, &config, 1);
+            .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(2, false, 0, &storage, &mut state_machine, &config, 1, &mut observer, 1);
     }
 
     let msg = replication.get_append_entries_for_follower::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(2, 3, &storage);
@@ -1031,6 +1081,7 @@ fn test_safety_follower_rejects_append_with_compacted_prev_log() {
     let mut current_term = 3;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Follower has entries 1-20
     let entries: Vec<LogEntry<String>> = (1..=20)
@@ -1071,7 +1122,7 @@ fn test_safety_follower_rejects_append_with_compacted_prev_log() {
         entry_type: raft_core::log_entry::EntryType::Command("new_cmd".to_string()),
     }]);
 
-    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         3,              // term
         10,             // prev_log_index (compacted)
         2,              // prev_log_term
@@ -1080,7 +1131,9 @@ fn test_safety_follower_rejects_append_with_compacted_prev_log() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     match response {
@@ -1113,6 +1166,7 @@ fn test_liveness_follower_accepts_append_at_snapshot_point() {
     let mut current_term = 3;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Follower has entries 1-15
     let entries: Vec<LogEntry<String>> = (1..=15)
@@ -1150,7 +1204,7 @@ fn test_liveness_follower_accepts_append_at_snapshot_point() {
         entry_type: EntryType::Command("cmd16".to_string()),
     }]);
 
-    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         3,              // term
         10,             // prev_log_index (at snapshot point)
         2,              // prev_log_term (matches snapshot)
@@ -1159,7 +1213,9 @@ fn test_liveness_follower_accepts_append_at_snapshot_point() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     match response {
@@ -1195,6 +1251,7 @@ fn test_safety_follower_rejects_append_with_mismatched_snapshot_term() {
     let mut current_term = 3;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Follower has entries 1-15, term 2
     let entries: Vec<LogEntry<String>> = (1..=15)
@@ -1229,7 +1286,7 @@ fn test_safety_follower_rejects_append_with_mismatched_snapshot_term() {
         entry_type: EntryType::Command("cmd16".to_string()),
     }]);
 
-    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         3,  // term
         10, // prev_log_index (at snapshot point)
         3,  // prev_log_term (WRONG - should be 2!)
@@ -1238,7 +1295,9 @@ fn test_safety_follower_rejects_append_with_mismatched_snapshot_term() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     match response {
@@ -1268,6 +1327,7 @@ fn test_liveness_both_nodes_compacted_replication_continues() {
     let mut current_term = 2;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Follower has entries 1-20, creates snapshot at 10, keeps 11-20
     let entries: Vec<LogEntry<String>> = (1..=20)
@@ -1312,7 +1372,7 @@ fn test_liveness_both_nodes_compacted_replication_continues() {
         },
     ]);
 
-    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         2,  // term
         20, // prev_log_index (in follower's log)
         2,  // prev_log_term
@@ -1321,7 +1381,9 @@ fn test_liveness_both_nodes_compacted_replication_continues() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     match response {
@@ -1353,6 +1415,7 @@ fn test_safety_follower_rejects_inconsistent_snapshot() {
     let mut current_term = 3;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Follower has entries from term 1, then snapshot
     let entries: Vec<LogEntry<String>> = (1..=10)
@@ -1386,7 +1449,7 @@ fn test_safety_follower_rejects_inconsistent_snapshot() {
         entry_type: EntryType::Command("cmd11".to_string()),
     }]);
 
-    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         3,  // term
         10, // prev_log_index
         2,  // prev_log_term (expects 2, but follower has 1)
@@ -1395,7 +1458,9 @@ fn test_safety_follower_rejects_inconsistent_snapshot() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     match response {
@@ -1462,8 +1527,9 @@ fn test_liveness_leader_detects_follower_needs_snapshot() {
 
     // Simulate follower failures to decrement next_index below first_log_index
     // Leader starts with next_index[0] = 21, needs to get it to < 11
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
     for _ in 0..15 {
-        let _config_changes: InMemoryConfigChangeCollection = replication.handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection>(
+        let _config_changes: InMemoryConfigChangeCollection = replication.handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
             0,     // peer
             false, // failure
             0,     // match_index (ignored on failure)
@@ -1471,6 +1537,8 @@ fn test_liveness_leader_detects_follower_needs_snapshot() {
             &mut InMemoryStateMachine::new(),
             &config,
             1,
+            &mut observer,
+            1, // node_id
         );
     }
 
@@ -1735,6 +1803,7 @@ fn test_liveness_replication_resumes_after_snapshot_install() {
     let mut current_term = 2;
     let mut role = NodeState::Follower;
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Install snapshot covering entries 1-10
     let mut leader_state_machine = InMemoryStateMachine::new();
@@ -1770,7 +1839,7 @@ fn test_liveness_replication_resumes_after_snapshot_install() {
         },
     ]);
 
-    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine>(
+    let (response, _config_changes) = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryConfigChangeCollection, InMemoryStorage, InMemoryStateMachine, NullObserver<String, InMemoryLogEntryCollection>>(
         2,  // term
         10, // prev_log_index (at snapshot point)
         2,  // prev_log_term
@@ -1779,7 +1848,9 @@ fn test_liveness_replication_resumes_after_snapshot_install() {
         &mut current_term,
         &mut storage,
         &mut state_machine,
-        &mut role
+        &mut role,
+        &mut observer,
+        1, // node_id
     );
 
     match response {
@@ -1995,9 +2066,10 @@ fn test_promote_caught_up_server_when_match_index_equals_commit_index() {
     replication.initialize_leader_state(peers.iter(), &storage);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Establish commit_index at 3 by getting majority
-    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
         2,
         true,
         3,
@@ -2005,6 +2077,8 @@ fn test_promote_caught_up_server_when_match_index_equals_commit_index() {
         &mut state_machine,
         &config,
         1,
+        &mut observer,
+        1, // node_id
     );
     assert_eq!(
         replication.commit_index(),
@@ -2022,7 +2096,7 @@ fn test_promote_caught_up_server_when_match_index_equals_commit_index() {
 
     // Server 4 replicates up to index 2 (not yet caught up)
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(4, true, 2, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(4, true, 2, &storage, &mut state_machine, &config, 1, &mut observer, 1);
 
     assert!(
         replication.is_catching_up(4),
@@ -2031,7 +2105,7 @@ fn test_promote_caught_up_server_when_match_index_equals_commit_index() {
 
     // Server 4 replicates up to index 3 (matches commit_index)
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(4, true, 3, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(4, true, 3, &storage, &mut state_machine, &config, 1, &mut observer, 1);
 
     // Should be promoted (no longer catching up)
     assert!(
@@ -2076,10 +2150,11 @@ fn test_catching_up_server_does_not_affect_commit_index() {
     replication.match_index_mut().insert(4, 0);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Node 2 confirms index 3
     let _config_changes: InMemoryConfigChangeCollection = replication
-        .handle_append_entries_response(2, true, 3, &storage, &mut state_machine, &config, 1);
+        .handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(2, true, 3, &storage, &mut state_machine, &config, 1, &mut observer, 1);
 
     // Now 2 out of 3 voting members (leader + node 2) have index 3
     // This is a majority of voting members, so commit_index should advance
@@ -2125,9 +2200,10 @@ fn test_multiple_catching_up_servers_excluded_from_quorum() {
     replication.match_index_mut().insert(5, 0);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Catching-up servers replicate fully, but shouldn't affect quorum
-    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
         4,
         true,
         2,
@@ -2135,8 +2211,10 @@ fn test_multiple_catching_up_servers_excluded_from_quorum() {
         &mut state_machine,
         &config,
         1,
+        &mut observer,
+        1, // node_id
     );
-    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
         5,
         true,
         2,
@@ -2144,6 +2222,8 @@ fn test_multiple_catching_up_servers_excluded_from_quorum() {
         &mut state_machine,
         &config,
         1,
+        &mut observer,
+        1, // node_id
     );
 
     // Still need majority of the original 3 voting nodes
@@ -2155,7 +2235,7 @@ fn test_multiple_catching_up_servers_excluded_from_quorum() {
     );
 
     // Now node 2 (voting member) confirms index 2
-    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
         2,
         true,
         2,
@@ -2163,6 +2243,8 @@ fn test_multiple_catching_up_servers_excluded_from_quorum() {
         &mut state_machine,
         &config,
         1,
+        &mut observer,
+        1, // node_id
     );
 
     // Now we have majority of voting members (leader + node 2)
@@ -2194,9 +2276,10 @@ fn test_catching_up_server_promotion_via_snapshot() {
     replication.initialize_leader_state(peers.iter(), &storage);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Establish commit_index at 10 by getting confirmation from peer
-    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
         2,
         true,
         10,
@@ -2204,6 +2287,8 @@ fn test_catching_up_server_promotion_via_snapshot() {
         &mut state_machine,
         &config,
         1,
+        &mut observer,
+        1, // node_id
     );
     assert_eq!(replication.commit_index(), 10);
 
@@ -2260,9 +2345,10 @@ fn test_catching_up_server_not_promoted_if_behind_commit_index() {
     replication.initialize_leader_state(peers.iter(), &storage);
 
     let mut state_machine = InMemoryStateMachine::new();
+    let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
 
     // Establish commit_index at 5 by getting confirmation from peer 2
-    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
         2,
         true,
         5,
@@ -2270,6 +2356,8 @@ fn test_catching_up_server_not_promoted_if_behind_commit_index() {
         &mut state_machine,
         &config,
         1,
+        &mut observer,
+        1, // node_id
     );
     assert_eq!(
         replication.commit_index(),
@@ -2283,7 +2371,7 @@ fn test_catching_up_server_not_promoted_if_behind_commit_index() {
     replication.match_index_mut().insert(3, 0);
 
     // Server replicates up to index 4 (still behind commit_index of 5)
-    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
         3,
         true,
         4,
@@ -2291,6 +2379,8 @@ fn test_catching_up_server_not_promoted_if_behind_commit_index() {
         &mut state_machine,
         &config,
         1,
+        &mut observer,
+        1, // node_id
     );
 
     assert!(
@@ -2299,7 +2389,7 @@ fn test_catching_up_server_not_promoted_if_behind_commit_index() {
     );
 
     // Server replicates up to index 5 (equals commit_index)
-    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response(
+    let _: InMemoryConfigChangeCollection = replication.handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine, InMemoryNodeCollection, InMemoryConfigChangeCollection, NullObserver<String, InMemoryLogEntryCollection>, InMemoryChunkCollection>(
         3,
         true,
         5,
@@ -2307,6 +2397,8 @@ fn test_catching_up_server_not_promoted_if_behind_commit_index() {
         &mut state_machine,
         &config,
         1,
+        &mut observer,
+        1, // node_id
     );
 
     assert!(
