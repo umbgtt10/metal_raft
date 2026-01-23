@@ -2,33 +2,37 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
+use core::sync::atomic::{AtomicBool, Ordering};
+use embassy_time::Duration;
 
 #[derive(Clone)]
 pub struct CancellationToken {
-    signal: &'static Signal<CriticalSectionRawMutex, ()>,
+    cancelled: &'static AtomicBool,
 }
 
 impl CancellationToken {
     pub fn new() -> Self {
-        static SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
-        Self { signal: &SIGNAL }
+        static CANCELLED: AtomicBool = AtomicBool::new(false);
+        Self {
+            cancelled: &CANCELLED,
+        }
     }
 
     /// Cancel all tasks waiting on this token
     pub fn cancel(&self) {
-        self.signal.signal(());
+        self.cancelled.store(true, Ordering::Release);
     }
 
     /// Check if cancellation has been requested (non-blocking)
     pub fn is_cancelled(&self) -> bool {
-        self.signal.signaled()
+        self.cancelled.load(Ordering::Acquire)
     }
 
-    /// Wait for cancellation (async)
+    /// Wait for cancellation (async) - polls every 10ms
     pub async fn wait(&self) {
-        self.signal.wait().await;
+        while !self.is_cancelled() {
+            embassy_time::Timer::after(Duration::from_millis(10)).await;
+        }
     }
 }
 
