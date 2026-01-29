@@ -5,10 +5,7 @@
 use crate::log_entry::ConfigurationChange;
 use crate::types::LogIndex;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CollectionError {
-    Full,
-}
+pub use crate::collections::error::CollectionError;
 
 pub trait ConfigChangeCollection: Clone {
     type Iter<'a>: Iterator<Item = (LogIndex, &'a ConfigurationChange)>

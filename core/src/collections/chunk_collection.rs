@@ -2,10 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CollectionError {
-    Full,
-}
+pub use crate::collections::error::CollectionError;
 
 /// Trait for collections of chunks used in snapshot transfer
 ///

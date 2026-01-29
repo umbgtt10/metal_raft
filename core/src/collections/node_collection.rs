@@ -4,10 +4,7 @@
 
 use crate::types::NodeId;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CollectionError {
-    Full,
-}
+pub use crate::collections::error::CollectionError;
 
 pub trait NodeCollection {
     type Iter<'a>: Iterator<Item = NodeId>
