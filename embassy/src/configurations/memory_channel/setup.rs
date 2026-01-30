@@ -13,8 +13,6 @@ use crate::raft_client::RaftClient;
 use embassy_executor::Spawner;
 use raft_core::observer::EventLevel;
 
-// --- In-Memory Channel Initialization ---
-
 pub async fn initialize_cluster(
     client_hub: &ClientChannelHub,
     spawner: Spawner,
@@ -23,35 +21,24 @@ pub async fn initialize_cluster(
 ) -> RaftClient {
     info!("Using Channel transport (In-Memory)");
 
-    // Create transport hub
     let transport_hub = ChannelTransportHub::new();
 
     for node_id in 1..=5 {
         let node_id_u64 = node_id as u64;
 
-        // Create transport for this node from the hub
         let transport = transport_hub.create_transport(node_id_u64);
-
-        // Create storage for this node
         let storage = InMemoryStorage::new();
-
-        // Get client channel receiver for this node
         let client_rx = client_hub.get_receiver(node_id_u64);
-
-        // Create the node
         let node = EmbassyNode::new(node_id_u64, storage, transport, client_rx, observer_level);
 
-        // Spawn Node Task
         spawner
             .spawn(channel_raft_node_task(node, cancel.clone()))
             .unwrap();
     }
 
-    // Return cluster handle for client interaction
     RaftClient::new(client_hub.get_all_senders(), cancel)
 }
 
-// Channel Raft Wrapper
 #[embassy_executor::task(pool_size = 5)]
 async fn channel_raft_node_task(
     node: EmbassyNode<ChannelTransport, InMemoryStorage>,

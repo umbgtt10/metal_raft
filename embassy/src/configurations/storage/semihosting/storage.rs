@@ -30,7 +30,6 @@ use raft_core::{
     types::{LogIndex, NodeId, Term},
 };
 
-/// Semihosting storage with persistent file I/O
 #[derive(Clone)]
 pub struct SemihostingStorage {
     node_id: NodeId,

@@ -15,14 +15,12 @@ use raft_core::{
     types::{LogIndex, NodeId, Term},
 };
 
-/// Simple in-memory storage for Embassy Raft nodes
-/// In a real system, this would persist to flash
 #[derive(Clone)]
 pub struct InMemoryStorage {
     current_term: Term,
     voted_for: Option<NodeId>,
-    log: Vec<LogEntry<String>, 256>, // Max 256 entries
-    snapshot: Option<raft_core::snapshot::Snapshot<EmbassySnapshotData>>,
+    log: Vec<LogEntry<String>, 256>,
+    snapshot: Option<Snapshot<EmbassySnapshotData>>,
     first_log_index: LogIndex,
 }
 
@@ -38,7 +36,6 @@ impl InMemoryStorage {
     }
 }
 
-/// Snapshot builder for incremental snapshot reception
 pub struct EmbassySnapshotBuilder {
     data: Vec<u8, 512>,
 }

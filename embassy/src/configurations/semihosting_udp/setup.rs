@@ -4,7 +4,7 @@
 
 use crate::cancellation_token::CancellationToken;
 use crate::client_channel_hub::ClientChannelHub;
-use crate::configurations::storage::semihosting::SemihostingStorage;
+use crate::configurations::storage::semihosting::storage::SemihostingStorage;
 use crate::configurations::transport::udp::config::{self, get_node_config};
 use crate::configurations::transport::udp::driver::{MockNetDriver, NetworkBus};
 use crate::configurations::transport::udp::transport::{
@@ -24,13 +24,11 @@ pub async fn initialize_cluster(
     observer_level: EventLevel,
 ) -> RaftClient {
     info!("Using UDP transport (simulated Ethernet)");
-    info!("WireRaftMsg serialization layer: COMPLETE ✓");
 
     static NETWORK_BUS: NetworkBus = NetworkBus::new();
 
     let mut stacks = Vec::with_capacity(5);
 
-    // Create network stacks for all 5 nodes
     for node_id in 1..=5 {
         // SAFETY: Each node gets a unique NodeNetworkResources instance from
         // get_node_resources(node_id), which returns a mutable reference to a

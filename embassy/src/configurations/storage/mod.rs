@@ -16,4 +16,4 @@ pub use in_memory::InMemoryStorage;
 pub mod semihosting;
 
 #[cfg(feature = "semihosting-storage")]
-pub use semihosting::SemihostingStorage;
+pub use semihosting::storage::SemihostingStorage;
