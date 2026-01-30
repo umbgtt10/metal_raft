@@ -2,37 +2,17 @@
 
 ## Overview
 
-This project implements the **Raft consensus algorithm** once and realizes it across multiple execution environments — from a fully deterministic in-memory simulator, to `no_std + Embassy`, and finally to a production-grade AWS/Kubernetes deployment.
+This project implements the **Raft consensus algorithm** once, realizes it on `no_std + Embassy`, and allows the possibility to implement on a production-grade AWS/Kubernetes deployment.
 
 The initial inspiration and methodological foundation for this work comes from the **MIT distributed systems labs (6.824 / 6.5840)**, particularly the Raft exercise. The project builds on those ideas but deliberately extends them toward stronger abstraction boundaries, multi-environment realizations, and production-grade operability.
 
-The core principle is simple and non-negotiable:
+## Objectives
 
-> **Correctness is proven in simulation. Infrastructure is added only after the logic is frozen.**
-
-This repository is intentionally structured to separate **algorithmic correctness** from **operational concerns**.
-
----
-
-## Project Status
-
-**MetalRaft is a completed proof-of-concept and reference implementation**, demonstrating:
-- ✅ Correct Raft consensus (156 tests passing, 100% RAFT-conformant)
-- ✅ Multi-environment portability (deterministic simulation + Embassy embedded)
-- ✅ Zero-cost abstractions for distributed algorithms (100% monomorphization)
-- ✅ Production-ready features: leader election, log replication, snapshots, crash recovery, dynamic membership, lease-based reads
-
-**Scope Decision**: This project is **feature-complete for its POC objectives**. Advanced features (Joint Consensus, Leadership Transfer) and architectural improvements (Pure Algorithm + Execution Layer pattern) are documented for future work but will **not be implemented in this codebase**. Applying these learnings to a greenfield project with correct architecture from day one is the better engineering approach.
-
-See [FUTURE_ARCHITECTURE.md](docs/FUTURE_ARCHITECTURE.md) for architectural insights that will inform future projects.
-
----
-
-## Current Architecture Limitations
-
-**Note**: The current design successfully achieves correctness and multi-environment portability, but has architectural limitations around algorithm swappability. A superior three-layer architecture (Pure Algorithm + Execution Layer + Infrastructure) has been identified through design exploration. This future architecture, which converges with modern blockchain designs (Ethereum, Cosmos, Polkadot), will be pursued in a future project that strategically combines monomorphization (for hot paths) with dynamic dispatch (for flexibility). See [FUTURE_ARCHITECTURE.md](docs/FUTURE_ARCHITECTURE.md) for detailed analysis.
-
----
+- ✅ Implement Raft in a technology-agnostic core
+- ✅ Implement Raft with a generic-only architecture (no dynamic dispatch) and show the limits of this approach
+- ✅ Validate correctness through a deterministic, adversarial test harness
+- ✅ Realize Raft on `no_std + Embassy` for embedded targets
+- ✅ Demonstrate that the same core can be realized on any platform (e.g., Tokio + gRPC + persistent storage)
 
 ## Design Philosophy
 
@@ -41,7 +21,6 @@ See [FUTURE_ARCHITECTURE.md](docs/FUTURE_ARCHITECTURE.md) for architectural insi
 * Raft logic is implemented **exactly once** in a technology-agnostic core.
 * All environment-specific concerns (runtime, networking, storage, observability) are layered *around* the core.
 * The Raft core does not know:
-
   * which async runtime it runs on
   * how messages are transported
   * how data is persisted
@@ -50,34 +29,16 @@ See [FUTURE_ARCHITECTURE.md](docs/FUTURE_ARCHITECTURE.md) for architectural insi
 ### 2. Correctness Before Infrastructure
 
 * The algorithm is validated using a **deterministic, adversarial test harness**.
-* Network partitions, message drops, reordering, and crashes are simulated.
-* Only after correctness is established do we introduce:
+* Network partitions, message drops, and crashes are simulated.
+* Only after correctness is established infrastructure is added:
 
   * persistence
   * real networking
-  * cloud infrastructure
 
 ### 3. Infrastructure Is a Plugin
 
 * Tokio, gRPC, Kubernetes, AWS, Grafana, Jaeger, etc. are **realizations**, not dependencies.
 * The Raft core remains close to "bare metal" and compatible with `no_std`.
-
-### 4. Monomorphization-First Architecture
-
-* This project serves as a **design exploration** for a larger future effort, demonstrating that complex distributed algorithms like Raft can be implemented entirely through **compile-time generics** (monomorphization) without dynamic dispatch (`dyn Trait`).
-* **Objective**: Prove that zero-cost abstractions scale to real-world consensus algorithms, including advanced features (log compaction, snapshots, dynamic membership, linearizable reads).
-* **Key Insight**: Raft's complexity remains manageable with generics (~11 type parameters). This approach yields:
-  * Zero runtime overhead (no vtable lookups)
-  * Aggressive compiler optimizations (inlining, dead code elimination)
-  * Embedded-friendly footprint
-* **The Trade-off**: Even though Rust's zero-cost abstractions guarantee high performance through monomorphization, **the price to pay is cognitive load**. As type parameters proliferate (11+ generics), developers face:
-  * Complex type signatures that obscure intent
-  * Increased mental overhead when reasoning about code
-  * Longer compile times as instantiations multiply
-  * Reduced IDE responsiveness and error message clarity
-* **Design Principle**: This project intentionally pushes monomorphization to its reasonable limits for Raft, demonstrating that at a certain complexity threshold, the pure monomorphization approach must be **appropriately combined with dynamic dispatch** (`dyn Trait`). This combination is architecturally significant: **generic abstractions signal and embody hard invariants** (compile-time enforced contracts that cannot be violated), while **dynamic dispatch signals soft architectural boundaries** (runtime flexibility points where behavior can vary without breaking core guarantees).
-
----
 
 ## Project Structure
 
@@ -87,15 +48,14 @@ metal_raft/
   validation/         # std-based deterministic simulator & test harness
   embassy/            # no_std + Embassy realization (embedded target)
   docs/               # Architecture Decision Records and implementation plans
+  scripts/            # Test automation script
+  test-utils/         # Shared test utilities
 ```
-
-**Note**: Production runtime (Tokio) and deployment infrastructure (AWS/Kubernetes) are planned for future phases.
 
 ### `metal_raft/core`
 
 * `#![no_std]` (optionally `alloc`)
 * Implements:
-
   * Leader election (with Pre-Vote Protocol)
   * Log replication
   * Log compaction & snapshots
@@ -103,7 +63,6 @@ metal_raft/
   * State transitions
   * Crash recovery
 * Exposes abstract traits for:
-
   * Transport
   * TimerService
   * Storage
@@ -111,12 +70,7 @@ metal_raft/
   * Observer (for instrumentation)
   * Collection abstractions (NodeCollection, MapCollection, etc.)
 
-This crate is **never allowed** to depend on:
-
-* async runtimes
-* networking stacks
-* serialization frameworks
-* operating system facilities
+This crate has **no dependencies outside core Rust**.
 
 ---
 
@@ -163,45 +117,6 @@ This crate is **never allowed** to depend on:
 * 9 comprehensive tests (6 unit + 3 integration)
 * 50-100x read performance improvement
 
----
-
----
-
-## Pre-Vote Protocol
-
-This implementation includes the **Pre-Vote Protocol** as described in Section 9.6 of Diego Ongaro's Raft thesis. Pre-vote is a critical optimization that prevents disruptions from partitioned or restarting nodes.
-
-#### Why Pre-Vote?
-
-In standard Raft, when a node's election timer fires, it immediately:
-1. Increments its term
-2. Starts an election
-3. Requests votes from peers
-
-**Problem**: A node that's been partitioned (can't reach majority) will repeatedly time out and increment its term. When the partition heals, this node contacts the cluster with a very high term, causing the current leader to step down unnecessarily.
-
-**Solution**: Pre-vote adds a preliminary phase:
-1. Node first asks "would you vote for me?" (pre-vote request)
-2. If it receives majority approval, *then* it increments term and starts a real election
-3. If pre-vote fails, term stays unchanged (no disruption)
-
-#### Benefits:
-- ✅ **Prevents term inflation** from partitioned nodes
-- ✅ **Reduces disruptions** during network issues
-- ✅ **Maintains liveness** - legitimate elections still proceed
-- ✅ **No safety impact** - all Raft guarantees preserved
-
-#### Implementation Details:
-- Pre-vote uses current term (no increment)
-- Pre-vote doesn't modify `voted_for` or persistent state
-- Same log up-to-date checks as regular votes
-- Majority of pre-votes required to proceed to real election
-- Transparent to rest of system (no API changes)
-
-**Status**: Fully implemented and tested. 6 dedicated pre-vote tests. Works across all environments (validation, embassy).
-
----
-
 ## Testing & Validation
 
 **Test Infrastructure:**
@@ -212,7 +127,7 @@ In standard Raft, when a node's election timer fires, it immediately:
 * Simulated network with partitions, message drops, reordering, latency
 * Crash / restart modeling
 
-**Test Coverage: 156 tests (136 core unit + 76 validation integration)**
+**Test Coverage: 232 tests (156 core unit + 76 validation integration)**
 * Leader election (basic, pre-vote, log restriction, split votes)
 * Log replication and commit advancement
 * Network partitions and healing
@@ -241,7 +156,7 @@ In standard Raft, when a node's election timer fires, it immediately:
 
 ---
 
-## Features Not Implemented (By Design)
+## Features Not Implemented
 
 The following features are **intentionally not implemented** in this project:
 
@@ -273,7 +188,7 @@ An alternative to lease-based reads for linearizable queries.
 
 Three-layer design: Pure Algorithm + Execution Layer + Infrastructure (see [FUTURE_ARCHITECTURE.md](docs/FUTURE_ARCHITECTURE.md)).
 
-**Why Not Implemented**: Would require 6-8 weeks to refactor ~80% of the codebase. This architectural pattern is better applied to a new project from the start rather than retrofitted.
+**Why Not Implemented**: Would require weeks to refactor ~80% of the codebase. This architectural pattern is better applied to a new project from the start rather than retrofitted.
 
 **Value**: Architectural insights are fully documented for future work.
 
@@ -286,10 +201,6 @@ This project successfully demonstrates:
 - Zero-cost abstractions scale to complex distributed algorithms
 - Multi-environment portability is achievable
 - Proper testing strategies for consensus systems
-
-Investing 11-16 weeks to complete remaining features on a foundation that architectural exploration has identified as suboptimal would be **poor engineering**. The correct approach is to apply these learnings to a future project with proper architecture from day one.
-
-**This is a successful proof-of-concept, not an abandoned project.**
 
 ---
 
@@ -360,7 +271,7 @@ The goal is **clarity, correctness, and architectural rigor**.
 
 This project was created to demonstrate:
 
-* deep understanding of distributed consensus
+* understanding of distributed consensus
 * disciplined abstraction design
 * correctness-first engineering
 * portability across radically different environments
@@ -369,8 +280,28 @@ This project was created to demonstrate:
 **All objectives achieved.** The project has successfully validated these principles through working implementation and comprehensive testing.
 
 
+## Current Architecture Limitations
+
+**Note**: The current design successfully achieves correctness and multi-environment portability, but has architectural limitations around algorithm swappability. A superior three-layer architecture (Pure Algorithm + Execution Layer + Infrastructure) has been identified through design exploration. This future architecture, which converges with modern blockchain designs (Ethereum, Cosmos, Polkadot), will be pursued in a future project that strategically combines monomorphization (for hot paths) with dynamic dispatch (for flexibility). See [FUTURE_ARCHITECTURE.md](docs/FUTURE_ARCHITECTURE.md) for detailed analysis.
+
 
 ---
+
+### 4. Monomorphization-First Architecture
+
+* This project serves as a **design exploration** for a larger future effort, demonstrating that complex distributed algorithms like Raft can be implemented entirely through **compile-time generics** (monomorphization) without dynamic dispatch (`dyn Trait`).
+* **Objective**: Prove that zero-cost abstractions scale to real-world consensus algorithms, including advanced features (log compaction, snapshots, dynamic membership, linearizable reads).
+* **Key Insight**: Raft's complexity remains manageable with generics (~11 type parameters). This approach yields:
+  * Zero runtime overhead (no vtable lookups)
+  * Aggressive compiler optimizations (inlining, dead code elimination)
+  * Embedded-friendly footprint
+* **The Trade-off**: Even though Rust's zero-cost abstractions guarantee high performance through monomorphization, **the price to pay is cognitive load**. As type parameters proliferate (11+ generics), developers face:
+  * Complex type signatures that obscure intent
+  * Increased mental overhead when reasoning about code
+  * Longer compile times as instantiations multiply
+  * Reduced IDE responsiveness and error message clarity
+* **Design Principle**: This project intentionally pushes monomorphization to its reasonable limits for Raft, demonstrating that at a certain complexity threshold, the pure monomorphization approach must be **appropriately combined with dynamic dispatch** (`dyn Trait`). This combination is architecturally significant: **generic abstractions signal and embody hard invariants** (compile-time enforced contracts that cannot be violated), while **dynamic dispatch signals soft architectural boundaries** (runtime flexibility points where behavior can vary without breaking core guarantees).
+
 
 ## License
 

@@ -50,30 +50,18 @@ This design philosophy enables the same consensus logic to run unchanged across:
   - Prevents disruptions from partitioned nodes
   - Term inflation protection
   - No safety impact, pure liveness improvement
-  - See: [README.md](../README.md#pre-vote-protocol--enabled) for details
 
 - ✅ **Dynamic Membership (Single-Server Changes)**
   - Add/remove one server at a time safely
   - Configuration tracking and validation
   - Catching-up servers (non-voting until synchronized)
   - Configuration survives snapshots and crashes
-  - See: [DYNAMIC_MEMBERSHIP_IMPLEMENTATION_PLAN.md](../docs/DYNAMIC_MEMBERSHIP_IMPLEMENTATION_PLAN.md)
 
 - ✅ **Lease-Based Linearizable Reads**
   - Leader lease mechanism for high-performance reads
   - Lease granted on commit advancement (quorum acknowledgment)
   - Lease revoked on step down (leadership loss)
   - Safety guarantee: lease_duration < election_timeout
-  - 50-100x read performance improvement
-  - 9 comprehensive tests (6 unit + 3 integration)
-
-**Architecture:**
-- ✅ Pure `no_std` implementation (only requires `alloc`)
-- ✅ Trait-based abstraction for all external dependencies
-- ✅ Zero `unsafe` code in core logic
-- ✅ Event-driven design (no background threads)
-- ✅ Compile-time polymorphism (no dynamic dispatch)
-- ✅ Comprehensive observer pattern for telemetry
 
 ### 🔄 Validation Status
 
@@ -141,12 +129,6 @@ pub fn on_event(&mut self, event: Event<P, L>) {
 }
 ```
 
-The environment is responsible for:
-1. Polling timers and converting expirations to `Event::TimerFired`
-2. Receiving network messages and converting to `Event::Message`
-3. Accepting client requests and converting to `Event::ClientCommand`
-4. Draining the outbox and physically sending messages via the transport
-
 ### 3. **No Hidden State**
 
 All Raft state is owned by `RaftNode`:
@@ -154,12 +136,6 @@ All Raft state is owned by `RaftNode`:
 - No thread-local storage
 - No ambient context
 - 100% deterministic given the same event sequence
-
-This enables:
-- Reproducible bugs
-- Deterministic testing
-- Formal verification (future)
-- Easy snapshotting of entire cluster state
 
 ### 4. **Zero-Cost Abstractions**
 
@@ -176,12 +152,6 @@ The `Observer` trait provides structured visibility:
 - **Info**: Elections, commits, important operations
 - **Debug**: Votes, heartbeats, detailed operations
 - **Trace**: Every message, every timer
-
-Implementations can:
-- Log to `defmt`, `log`, or structured JSON
-- Emit Prometheus metrics
-- Generate distributed traces (OpenTelemetry)
-- Capture events for test assertions
 
 ---
 
@@ -230,7 +200,7 @@ The Raft core is organized into focused, testable components:
 - [components/config_change_manager.rs](src/components/config_change_manager.rs) - Configuration change protocol
 - [components/role_transition_manager.rs](src/components/role_transition_manager.rs) - State transitions, initialization
 - [components/leader_lease.rs](src/components/leader_lease.rs) - Leader lease for linearizable reads
-- [components/message_handler.rs](src/components/message_handler.rs) - **All Raft message processing** (~900 LOC)
+- [components/message_handler.rs](src/components/message_handler.rs) -
 
 **Abstractions:**
 - [transport.rs](src/transport.rs) - Network abstraction
@@ -561,38 +531,6 @@ The current implementation covers the core Raft protocol. The following advanced
 - Integration in MessageHandler (grant on commit, revoke on step down)
 - Observer events for lease operations
 - Safety invariant enforcement at construction
-
----
-
-## Future Considerations
-
-### Beyond Raft Paper
-- **Multi-Raft**: Multiple Raft groups sharing resources
-- **Leadership Transfer**: Graceful handoff for maintenance
-- **Batch Writes**: Amortize consensus overhead
-- **Parallel Log Replication**: Pipeline entries to followers
-
-### Formal Verification
-- **TLA+ Specification**: Model-check core state transitions
-- **Proof of Correctness**: Mechanized proofs in Coq/Lean
-- **Fuzzing**: Property-based testing with `proptest`
-
-### Optimizations
-- **Zero-copy Serialization**: Avoid allocations in hot path
-- **SIMD for CRC**: Faster integrity checks
-- **Batch AppendEntries**: Reduce RPC overhead
-
----
-
-## Contributing
-
-When implementing advanced features:
-
-1. **Keep core pure**: No environment dependencies
-2. **Extend traits**: Don't break existing implementations
-3. **Add observer events**: Make new behavior observable
-4. **Write tests first**: Validate in deterministic harness
-5. **Update documentation**: Explain trade-offs and design decisions
 
 ---
 
