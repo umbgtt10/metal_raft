@@ -12,8 +12,8 @@ use embassy_sync::mutex::Mutex;
 use embassy_time::Duration;
 use raft_core::types::NodeId;
 
-// Shared client infrastructure (transport-agnostic)
-pub(crate) static CLIENT_CHANNELS: [Channel<CriticalSectionRawMutex, ClientRequest, 4>; 5] = [
+// Private cluster state - not directly accessible outside this module
+static CLIENT_CHANNELS: [Channel<CriticalSectionRawMutex, ClientRequest, 4>; 5] = [
     Channel::new(),
     Channel::new(),
     Channel::new(),
@@ -21,19 +21,19 @@ pub(crate) static CLIENT_CHANNELS: [Channel<CriticalSectionRawMutex, ClientReque
     Channel::new(),
 ];
 
-pub(crate) static CLIENT_WRITE_RESPONSE_CHANNEL: Channel<
+static CLIENT_WRITE_RESPONSE_CHANNEL: Channel<
     CriticalSectionRawMutex,
     Result<(), ClusterError>,
     1,
 > = Channel::new();
 
-pub(crate) static CLIENT_READ_RESPONSE_CHANNEL: Channel<
+static CLIENT_READ_RESPONSE_CHANNEL: Channel<
     CriticalSectionRawMutex,
     Result<Option<String>, ClusterError>,
     1,
 > = Channel::new();
 
-pub(crate) static CURRENT_LEADER: Mutex<CriticalSectionRawMutex, Option<NodeId>> = Mutex::new(None);
+static CURRENT_LEADER: Mutex<CriticalSectionRawMutex, Option<NodeId>> = Mutex::new(None);
 
 /// Client request to Raft cluster
 #[derive(Clone)]
@@ -77,17 +77,38 @@ pub struct RaftCluster {
 }
 
 impl RaftCluster {
+    /// Get client channel receiver for a specific node (internal use)
+    pub(crate) fn client_channel_receiver(
+        node_id: NodeId,
+    ) -> embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, ClientRequest, 4> {
+        let index = (node_id - 1) as usize;
+        CLIENT_CHANNELS[index].receiver()
+    }
+
+    /// Get client channel sender by index (internal use)
+    pub(crate) fn client_channel_sender(
+        index: usize,
+    ) -> embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, ClientRequest, 4> {
+        CLIENT_CHANNELS[index].sender()
+    }
+
+    /// Get current leader mutex (internal use)
+    pub(crate) fn current_leader_mutex() -> &'static Mutex<CriticalSectionRawMutex, Option<NodeId>>
+    {
+        &CURRENT_LEADER
+    }
+
     /// Create new cluster handle from shared statics
     pub fn new(cancel: CancellationToken) -> Self {
         Self {
             client_channels: [
-                CLIENT_CHANNELS[0].sender(),
-                CLIENT_CHANNELS[1].sender(),
-                CLIENT_CHANNELS[2].sender(),
-                CLIENT_CHANNELS[3].sender(),
-                CLIENT_CHANNELS[4].sender(),
+                Self::client_channel_sender(0),
+                Self::client_channel_sender(1),
+                Self::client_channel_sender(2),
+                Self::client_channel_sender(3),
+                Self::client_channel_sender(4),
             ],
-            current_leader: &CURRENT_LEADER,
+            current_leader: Self::current_leader_mutex(),
             cancel,
         }
     }

@@ -34,8 +34,8 @@ pub async fn initialize_cluster(
         let storage = InMemoryStorage::new();
 
         // Create the node
-        let client_rx = crate::cluster::CLIENT_CHANNELS[(node_id_u64 - 1) as usize].receiver();
-        let node = crate::embassy_node::EmbassyNode::new(
+        let client_rx = RaftCluster::client_channel_receiver(node_id);
+        let node = EmbassyNode::new(
             node_id_u64,
             storage,
             transport,

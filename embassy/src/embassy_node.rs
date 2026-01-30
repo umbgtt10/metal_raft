@@ -12,7 +12,7 @@ use embassy_time::Duration;
 use raft_core::components::message_handler::ReadError;
 
 use crate::cancellation_token::CancellationToken;
-use crate::cluster::{ClientRequest, ClusterError, CLIENT_CHANNELS, CURRENT_LEADER};
+use crate::cluster::{ClientRequest, ClusterError, RaftCluster};
 use crate::collections::embassy_config_change_collection::EmbassyConfigChangeCollection;
 use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::collections::embassy_map_collection::EmbassyMapCollection;
@@ -213,16 +213,15 @@ impl<
                         self.pending_commands.insert(index, response_tx);
                     }
                     Err(ClientError::NotLeader) => {
-                        let leader_id = *CURRENT_LEADER.lock().await;
+                        let leader_id = *RaftCluster::current_leader_mutex().lock().await;
 
                         if let Some(leader) = leader_id {
                             info!("Node {} redirecting to Leader {}", self.node_id, leader);
-                            let _ = CLIENT_CHANNELS[leader as usize - 1].try_send(
-                                ClientRequest::Write {
+                            let _ = RaftCluster::client_channel_sender(leader as usize - 1)
+                                .try_send(ClientRequest::Write {
                                     payload,
                                     response_tx,
-                                },
-                            );
+                                });
                         } else {
                             let _ = response_tx.try_send(Err(ClusterError::NoLeader));
                         }
@@ -238,12 +237,16 @@ impl<
                         let _ = response_tx.try_send(Ok(None));
                     }
                     Err(ReadError::NotLeaderOrNoLease) => {
-                        let leader_id = *CURRENT_LEADER.lock().await;
+                        let leader_id = *RaftCluster::current_leader_mutex()
+                            .lock()
+                            .await;
 
                         if let Some(leader) = leader_id {
                             if leader != self.node_id {
-                                let _ = CLIENT_CHANNELS[leader as usize - 1]
-                                    .try_send(ClientRequest::Read { key, response_tx });
+                                let _ = RaftCluster::client_channel_sender(
+                                    leader as usize - 1,
+                                )
+                                .try_send(ClientRequest::Read { key, response_tx });
                             } else {
                                 let _ = response_tx.try_send(Err(ClusterError::NoLeader));
                             }

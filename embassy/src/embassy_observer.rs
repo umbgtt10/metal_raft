@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::{cluster::CURRENT_LEADER, collections::heapless_chunk_collection::HeaplessChunkVec};
+use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
 use raft_core::{
     collections::log_entry_collection::LogEntryCollection,
     observer::{EventLevel, Observer, Role, TimerKind},
@@ -10,7 +10,6 @@ use raft_core::{
     types::{LogIndex, NodeId, Term},
 };
 
-/// Observer implementation for Embassy that logs essential events
 #[derive(Clone)]
 pub struct EmbassyObserver<P: Clone, L: LogEntryCollection<Payload = P> + Clone> {
     level: EventLevel,
@@ -40,9 +39,6 @@ impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Observer for EmbassyO
     fn leader_elected(&mut self, node: NodeId, term: Term) {
         if self.level >= EventLevel::Essential {
             info!("Node {} became LEADER (term {})", node, term);
-        }
-        if let Ok(mut leader) = CURRENT_LEADER.try_lock() {
-            *leader = Some(node);
         }
     }
 
