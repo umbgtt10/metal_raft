@@ -23,43 +23,50 @@ use raft_test_utils::{
 
 #[test]
 fn test_node_state_to_role_follower() {
+    // Arrange
     let state = NodeState::Follower;
-    assert_eq!(
-        RoleTransitionManager::node_state_to_role(&state),
-        Role::Follower
-    );
+
+    // Act
+    let result = RoleTransitionManager::node_state_to_role(&state);
+
+    // Assert
+    assert_eq!(result, Role::Follower);
 }
 
 #[test]
 fn test_node_state_to_role_candidate() {
+    // Arrange
     let state = NodeState::Candidate;
-    assert_eq!(
-        RoleTransitionManager::node_state_to_role(&state),
-        Role::Candidate
-    );
+
+    // Act
+    let result = RoleTransitionManager::node_state_to_role(&state);
+
+    // Assert
+    assert_eq!(result, Role::Candidate);
 }
 
 #[test]
 fn test_node_state_to_role_leader() {
+    // Arrange
     let state = NodeState::Leader;
-    assert_eq!(
-        RoleTransitionManager::node_state_to_role(&state),
-        Role::Leader
-    );
-}
 
-// ============================================================
-// start_pre_vote tests
-// ============================================================
+    // Act
+    let result = RoleTransitionManager::node_state_to_role(&state);
+
+    // Assert
+    assert_eq!(result, Role::Leader);
+}
 
 #[test]
 fn test_start_pre_vote_returns_pre_vote_request() {
+    // Arrange
     let node_id = 1;
     let current_term = 5;
     let storage = InMemoryStorage::new();
     let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
+    // Act
     let msg = RoleTransitionManager::start_pre_vote::<
         String,
         InMemoryLogEntryCollection,
@@ -76,6 +83,7 @@ fn test_start_pre_vote_returns_pre_vote_request() {
         &mut observer,
     );
 
+    // Assert
     match msg {
         RaftMsg::PreVoteRequest {
             term, candidate_id, ..
@@ -87,12 +95,9 @@ fn test_start_pre_vote_returns_pre_vote_request() {
     }
 }
 
-// ============================================================
-// start_election tests
-// ============================================================
-
 #[test]
 fn test_start_election_increments_term() {
+    // Arrange
     let node_id = 1;
     let mut current_term = 5;
     let mut storage = InMemoryStorage::new();
@@ -100,7 +105,8 @@ fn test_start_election_increments_term() {
     let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
-    let _msg = RoleTransitionManager::start_election::<
+    // Act
+    let _ = RoleTransitionManager::start_election::<
         String,
         InMemoryLogEntryCollection,
         InMemoryChunkCollection,
@@ -118,12 +124,14 @@ fn test_start_election_increments_term() {
         Role::Follower,
     );
 
+    // Assert
     assert_eq!(current_term, 6);
     assert_eq!(storage.current_term(), 6);
 }
 
 #[test]
 fn test_start_election_changes_role_to_candidate() {
+    // Arrange
     let node_id = 1;
     let mut current_term = 5;
     let mut storage = InMemoryStorage::new();
@@ -131,7 +139,8 @@ fn test_start_election_changes_role_to_candidate() {
     let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
-    let _msg = RoleTransitionManager::start_election::<
+    // Act
+    let _ = RoleTransitionManager::start_election::<
         String,
         InMemoryLogEntryCollection,
         InMemoryChunkCollection,
@@ -149,11 +158,13 @@ fn test_start_election_changes_role_to_candidate() {
         Role::Follower,
     );
 
+    // Assert
     assert_eq!(role, NodeState::Candidate);
 }
 
 #[test]
 fn test_start_election_votes_for_self() {
+    // Arrange
     let node_id = 1;
     let mut current_term = 5;
     let mut storage = InMemoryStorage::new();
@@ -161,7 +172,8 @@ fn test_start_election_votes_for_self() {
     let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
-    let _msg = RoleTransitionManager::start_election::<
+    // Act
+    let _ = RoleTransitionManager::start_election::<
         String,
         InMemoryLogEntryCollection,
         InMemoryChunkCollection,
@@ -179,15 +191,13 @@ fn test_start_election_votes_for_self() {
         Role::Follower,
     );
 
+    // Assert
     assert_eq!(storage.voted_for(), Some(node_id));
 }
 
-// ============================================================
-// become_leader tests
-// ============================================================
-
 #[test]
 fn test_become_leader_changes_role() {
+    // Arrange
     let node_id = 1;
     let current_term = 5;
     let mut role = NodeState::Candidate;
@@ -196,6 +206,7 @@ fn test_become_leader_changes_role() {
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
     let mut observer = NullObserver::new();
 
+    // Act
     RoleTransitionManager::become_leader::<
         String,
         InMemoryLogEntryCollection,
@@ -217,15 +228,13 @@ fn test_become_leader_changes_role() {
         Role::Candidate,
     );
 
+    // Assert
     assert_eq!(role, NodeState::Leader);
 }
 
-// ============================================================
-// step_down tests
-// ============================================================
-
 #[test]
 fn test_step_down_from_leader() {
+    // Arrange
     let node_id = 1;
     let old_term = 5;
     let new_term = 10;
@@ -235,6 +244,7 @@ fn test_step_down_from_leader() {
     let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
+    // Act
     RoleTransitionManager::step_down::<
         String,
         InMemoryLogEntryCollection,
@@ -255,6 +265,7 @@ fn test_step_down_from_leader() {
         Role::Leader,
     );
 
+    // Assert
     assert_eq!(role, NodeState::Follower);
     assert_eq!(current_term, new_term);
     assert_eq!(storage.current_term(), new_term);
@@ -263,6 +274,7 @@ fn test_step_down_from_leader() {
 
 #[test]
 fn test_step_down_from_candidate() {
+    // Arrange
     let node_id = 1;
     let old_term = 5;
     let new_term = 10;
@@ -272,6 +284,7 @@ fn test_step_down_from_candidate() {
     let mut election = ElectionManager::<InMemoryNodeCollection, _>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
+    // Act
     RoleTransitionManager::step_down::<
         String,
         InMemoryLogEntryCollection,
@@ -292,6 +305,7 @@ fn test_step_down_from_candidate() {
         Role::Candidate,
     );
 
+    // Assert
     assert_eq!(role, NodeState::Follower);
     assert_eq!(current_term, new_term);
     assert_eq!(storage.current_term(), new_term);
@@ -300,6 +314,7 @@ fn test_step_down_from_candidate() {
 
 #[test]
 fn test_become_leader_initializes_replication() {
+    // Arrange
     let node_id = 1;
     let current_term = 1;
     let mut role = NodeState::Candidate;
@@ -311,6 +326,7 @@ fn test_become_leader_initializes_replication() {
     members.push(1).unwrap();
     members.push(2).unwrap();
 
+    // Act
     RoleTransitionManager::become_leader::<
         String,
         InMemoryLogEntryCollection,
@@ -332,14 +348,15 @@ fn test_become_leader_initializes_replication() {
         Role::Candidate,
     );
 
+    // Assert
     assert_eq!(role, NodeState::Leader);
-    // Check that replication is initialized for followers
     assert!(replication.next_index().get(2).is_some());
     assert!(replication.match_index().get(2).is_some());
 }
 
 #[test]
 fn test_become_leader_with_multiple_followers() {
+    // Arrange
     let node_id = 1;
     let current_term = 1;
     let mut role = NodeState::Candidate;
@@ -347,13 +364,12 @@ fn test_become_leader_with_multiple_followers() {
     let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
     let mut observer = NullObserver::new();
-
-    // Create cluster with 5 nodes
     let mut members = InMemoryNodeCollection::new();
     for i in 1..=5 {
         members.push(i).unwrap();
     }
 
+    // Act
     RoleTransitionManager::become_leader::<
         String,
         InMemoryLogEntryCollection,
@@ -375,16 +391,17 @@ fn test_become_leader_with_multiple_followers() {
         Role::Candidate,
     );
 
+    // Assert
     assert_eq!(role, NodeState::Leader);
-    // Check that replication is initialized for all followers
     for follower_id in 2..=5 {
-        assert!(replication.next_index().get(follower_id).is_some(),);
-        assert!(replication.match_index().get(follower_id).is_some(),);
+        assert!(replication.next_index().get(follower_id).is_some());
+        assert!(replication.match_index().get(follower_id).is_some());
     }
 }
 
 #[test]
 fn test_step_down_notifies_observer() {
+    // Arrange
     let node_id = 1;
     let mut current_term = 1;
     let mut role = NodeState::Leader;
@@ -393,6 +410,7 @@ fn test_step_down_notifies_observer() {
     let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut observer = NullObserver::new();
 
+    // Act
     RoleTransitionManager::step_down::<
         String,
         InMemoryLogEntryCollection,
@@ -403,8 +421,8 @@ fn test_step_down_notifies_observer() {
         InMemoryStorage,
     >(
         node_id,
-        1, // old_term
-        3, // new_term
+        1,
+        3,
         &mut current_term,
         &mut storage,
         &mut role,
@@ -413,6 +431,7 @@ fn test_step_down_notifies_observer() {
         Role::Leader,
     );
 
+    // Assert
     assert_eq!(role, NodeState::Follower);
     assert_eq!(current_term, 3);
     assert_eq!(storage.current_term(), 3);

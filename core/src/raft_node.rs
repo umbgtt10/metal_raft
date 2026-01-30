@@ -2,6 +2,8 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+use core::marker::PhantomData;
+
 use crate::{
     clock::Clock,
     collections::{
@@ -58,7 +60,7 @@ where
     snapshot_manager: SnapshotManager,
     leader_lease: LeaderLease<CLK>,
 
-    _phantom: core::marker::PhantomData<CCC>,
+    _phantom: PhantomData<CCC>,
 }
 
 impl<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK> RaftNode<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
@@ -128,7 +130,7 @@ where
             config_manager,
             snapshot_manager,
             leader_lease,
-            _phantom: core::marker::PhantomData,
+            _phantom: PhantomData,
         }
     }
 
@@ -244,7 +246,7 @@ where
             config_manager: &mut self.config_manager,
             snapshot_manager: &mut self.snapshot_manager,
             leader_lease: &mut self.leader_lease,
-            _phantom: core::marker::PhantomData,
+            _phantom: PhantomData,
         }
     }
 }

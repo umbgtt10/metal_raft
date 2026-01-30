@@ -11,8 +11,6 @@ pub trait StateMachine {
     fn apply(&mut self, payload: &Self::Payload);
     fn get(&self, key: &str) -> Option<&str>;
 
-    // === Snapshot Methods ===
-
     fn create_snapshot(&self) -> Self::SnapshotData;
     fn restore_from_snapshot(&mut self, data: &Self::SnapshotData) -> Result<(), SnapshotError>;
 }
