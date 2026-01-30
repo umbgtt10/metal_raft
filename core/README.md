@@ -63,18 +63,14 @@ This design philosophy enables the same consensus logic to run unchanged across:
   - Lease revoked on step down (leadership loss)
   - Safety guarantee: lease_duration < election_timeout
 
-### 🔄 Validation Status
+### Validation
 
-The core has been validated through:
-- ✅ **Embassy**: 5-node cluster running on QEMU with UDP transport
-- ✅ **Raft-Validation**: Deterministic and timefull test harnesses with adversarial network conditions
-- ✅ **Client Request Handling**: Full write-path with commit acknowledgments
-- ✅ **Leader Re-election**: Recovery from failures and partitions
-- ✅ **Snapshot Creation & Transfer**: Automatic log compaction and follower catch-up
-- ✅ **Crash Recovery**: Node restart with state restoration from snapshots
-- ✅ **Dynamic Membership**: Single-server configuration changes (add/remove one node at a time)
-- ✅ **Lease-Based Reads**: Linearizable reads with 50-100x performance improvement
-- ✅ **156 Tests Passing**: 136 core unit tests + 76 validation integration tests covering all features
+All features are comprehensively tested with 232 tests (156 core unit + 76 validation integration) covering safety properties, adversarial scenarios, and multi-environment execution.
+
+See [../validation/README.md](../validation/README.md) for:
+- Test infrastructure and philosophy
+- Detailed test coverage by feature
+- Running instructions
 
 ---
 
@@ -222,53 +218,7 @@ The `MessageHandler` is the heart of Raft message processing, implementing:
 **Current State**: Single 830-line file with clear separation of concerns via helper methods
 **Testability**: Isolated from RaftNode via MessageHandlerContext (7 dedicated tests in message_handler_tests.rs)
 
-### Test Organization
 
-The test suite is organized by feature/scenario:
-```
-validation/tests/ (156 total tests)
-├── Component Tests (core/tests/ - 7 files, 136 tests)
-│   ├── election_manager_tests.rs (24 tests)
-│   ├── log_replication_manager_tests.rs (40 tests)
-│   ├── snapshot_manager_tests.rs (21 tests)
-│   ├── config_change_manager_tests.rs (25 tests)
-│   ├── role_transition_manager_tests.rs (13 tests)
-│   ├── message_handler_tests.rs (27 tests)
-│   └── leader_lease_tests.rs (6 tests)
-├── Election Protocol Tests (4 files)
-│   ├── basic_leader_election_tests.rs
-│   ├── pre_vote_tests.rs (6 dedicated tests)
-│   ├── election_with_log_restriction.rs
-│   └── timed_election_tests.rs
-├── Replication & Safety Tests (8 files)
-│   ├── client_payload_replication_tests.rs
-│   ├── conflict_resolution_tests.rs
-│   ├── commit_index_advancement_tests.rs
-│   ├── follower_far_behind.rs
-│   ├── append_entry_idempotency.rs
-│   ├── cannot_commit_old_entries.rs
-│   ├── rapid_sequential_command.rs
-│   └── lease_integration_tests.rs (3 tests)
-├── Snapshot Tests (4 files)
-│   ├── snapshot_creation_protocol_tests.rs
-│   ├── snapshot_infrastructure_tests.rs
-│   ├── crash_recovery_with_snapshots_tests.rs
-│   └── install_snapshot_candidate_tests.rs
-└── Membership Tests (1 file)
-    └── config_api_tests.rs (comprehensive config change tests)
-│   ├── client_payload_replication_tests.rs
-│   ├── commit_index_advancement_tests.rs
-│   ├── log_matching_property_tests.rs
-│   └── ...
-├── Snapshot & Compaction Tests (5 files)
-│   ├── snapshot_creation_protocol_tests.rs
-│   ├── snapshot_infrastructure_tests.rs
-│   ├── install_snapshot_candidate_tests.rs
-│   └── crash_recovery_with_snapshots_tests.rs
-└── Configuration Tests (2 files)
-    ├── config_api_tests.rs
-    └── single_node_cluster_tests.rs
-```
 
 ---
 
@@ -335,21 +285,7 @@ The current implementation covers the core Raft protocol. The following advanced
    - Update last_applied to snapshot's last_included_index
    - **Never replay uncommitted log entries** (Raft safety requirement)
 
-**Test Coverage (156 total tests):**
-- ✅ Snapshot creation after threshold exceeded
-- ✅ Snapshot metadata tracking and persistence
-- ✅ InstallSnapshot RPC with chunked transfer
-- ✅ Log compaction and entry discard
-- ✅ Follower catch-up via snapshot transfer
-- ✅ State machine snapshot/restore round-trip
-- ✅ Node restart with snapshot restoration
-- ✅ Multiple restart cycles with intermediate snapshots
-- ✅ Follower crash during snapshot transfer
-- ✅ Recovery without snapshot (uncommitted entries discarded)
-- ✅ Continued operation after recovery
-- ✅ MessageHandler isolation tests (27 tests)
-
-**Operational Value**: ✅ Production-ready bounded memory for long-running clusters
+**Operational Value**: Production-ready bounded memory for long-running clusters
 
 ---
 
@@ -422,19 +358,7 @@ The current implementation covers the core Raft protocol. The following advanced
    fn lease_revoked(&mut self, node: NodeId);
    ```
 
-**Test Coverage (9 tests):**
-- ✅ 6 unit tests in `core/tests/leader_lease_tests.rs`
-  - Lease lifecycle (grant/revoke/expiration)
-  - Safety invariant enforcement
-  - Clock-based validation
-- ✅ 3 integration tests in `validation/tests/replication/lease_integration_tests.rs`
-  - Lease granted on quorum acknowledgment
-  - Lease revoked on leader change
-  - End-to-end linearizable read scenario
-
-**Implementation Effort**: Completed (1 week)
 **Operational Value**: High (50-100x read performance improvement)
-**Risk**: Low (doesn't affect write path, extensively tested)
 
 ---
 
@@ -442,7 +366,6 @@ The current implementation covers the core Raft protocol. The following advanced
 
 ### Phase 1: Log Compaction + Snapshots ✅
 **Status**: ✅ **COMPLETE**
-156 total tests passing (136 core unit + 76 validation integration)
 
 **Completed Features:**
 - ✅ Automatic snapshot creation at configurable threshold
@@ -452,17 +375,6 @@ The current implementation covers the core Raft protocol. The following advanced
 - ✅ Log compaction (discard entries before snapshot)
 - ✅ Crash recovery with snapshot restoration
 - ✅ Follower catch-up via snapshot transfer
-
-**Test Coverage:**
-1. ✅ **Snapshot Creation**: Leader creates snapshot after log exceeds threshold
-2. ✅ **Snapshot Transfer**: InstallSnapshot RPC with chunked data transfer
-3. ✅ **Log Compaction**: Leader discards compacted entries
-4. ✅ **Follower Catch-Up**: Lagging followers receive snapshots
-5. ✅ **Crash Recovery**: Node restart with snapshot restoration
-6. ✅ **Multiple Restarts**: Snapshot persistence across restart cycles
-7. ✅ **Crash During Transfer**: Follower recovery from partial snapshot
-8. ✅ **Recovery Without Snapshot**: Uncommitted entries correctly discarded
-9. ✅ **Continued Operation**: Recovered nodes rejoin consensus
 
 **Operational Impact**: Clusters can now run indefinitely with bounded memory usage
 
@@ -491,18 +403,6 @@ The current implementation covers the core Raft protocol. The following advanced
 - Joint consensus prevents split-brain during reconfig
 - Edge cases handled (leader removal, self-removal, etc.)
 
-**Required New Tests:**
-1. **Add Server Test**: Leader receives `AddServer` request, commits configuration change (C_old → C_old,new → C_new), new node catches up and participates in consensus
-2. **Remove Server Test**: Leader removes node via joint consensus, cluster continues operating with reduced membership
-3. **Joint Consensus Commit Test**: During transition, verify that entries require majority from both C_old and C_old,new configurations
-4. **Configuration Log Entry Test**: Configuration changes stored as special log entries, replicated and applied deterministically
-5. **Leader Removal Test**: Leader removes itself from cluster, steps down after committing C_new, new leader elected from remaining nodes
-6. **Concurrent Reconfig Prevention Test**: Second configuration change request rejected while first is in progress (C_old,new active)
-7. **Split-Brain Prevention Test**: Partitioned old configuration cannot commit without new members (joint majority required)
-8. **New Member Catch-Up Test**: Added node receives full log (or snapshot), transitions from non-voting to voting member after catching up
-9. **Self-Removal Edge Case Test**: Node removes itself from cluster, stops participating after C_new committed
-10. **Multiple Sequential Reconfigs Test**: Cluster successfully processes multiple add/remove operations in sequence (one at a time)
-
 ---
 
 ### Phase 4: Linearizable Reads ✅
@@ -518,13 +418,6 @@ The current implementation covers the core Raft protocol. The following advanced
 - ✅ Leader lease mechanism with grant/revoke logic
 - ✅ Reads are linearizable (no stale data)
 - ✅ Lease safety: `lease_duration < election_timeout`
-- ✅ Comprehensive test coverage (9 tests)
-
-**Implemented Tests:**
-1. ✅ **Lease Lifecycle Tests**: Grant, revoke, expiration validation (6 unit tests)
-2. ✅ **Lease Grant Integration**: Leader grants lease on commit advancement via quorum
-3. ✅ **Lease Revoke Integration**: Leader revokes lease on step down
-4. ✅ **Linearizable Reads**: End-to-end scenario validating read safety
 
 **Completed Work:**
 - LeaderLease component with clock abstraction

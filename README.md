@@ -8,37 +8,15 @@ The initial inspiration and methodological foundation for this work comes from t
 
 ## Objectives
 
-- ✅ Implement Raft in a technology-agnostic core
-- ✅ Implement Raft with a generic-only architecture (no dynamic dispatch) and show the limits of this approach
-- ✅ Validate correctness through a deterministic, adversarial test harness
-- ✅ Realize Raft on `no_std + Embassy` for embedded targets
-- ✅ Demonstrate that the same core can be realized on any platform (e.g., Tokio + gRPC + persistent storage)
+  1) Implement Raft in a technology-agnostic core [docs/adrs/ADS-R1%20Technology-Agnostic%20Algorithmic%20Core.md](docs/adrs/ADR-R1%20Technology-Agnostic%20Algorithmic%20Core.md)
+  2) Implement Raft with a generic-only architecture (no dynamic dispatch) and show the limits of this approach
+  3) Validate correctness through a deterministic, adversarial test harness [docs/validation/README.md](docs/validation/README.md)
+  4) Realize Raft on `no_std + Embassy` for embedded targets [embassy/README.md](embassy/README.md)
+  5) Demonstrate that the same core can be realized on any platform (e.g., Tokio + gRPC + persistent storage)
 
 ## Design Philosophy
 
-### 1. One Core, Many Realizations
-
-* Raft logic is implemented **exactly once** in a technology-agnostic core.
-* All environment-specific concerns (runtime, networking, storage, observability) are layered *around* the core.
-* The Raft core does not know:
-  * which async runtime it runs on
-  * how messages are transported
-  * how data is persisted
-  * where or how it is deployed
-
-### 2. Correctness Before Infrastructure
-
-* The algorithm is validated using a **deterministic, adversarial test harness**.
-* Network partitions, message drops, and crashes are simulated.
-* Only after correctness is established infrastructure is added:
-
-  * persistence
-  * real networking
-
-### 3. Infrastructure Is a Plugin
-
-* Tokio, gRPC, Kubernetes, AWS, Grafana, Jaeger, etc. are **realizations**, not dependencies.
-* The Raft core remains close to "bare metal" and compatible with `no_std`.
+See [validation/README.md](validation/README.md) for complete testing documentation.
 
 ## Project Structure
 
@@ -117,42 +95,16 @@ This crate has **no dependencies outside core Rust**.
 * 9 comprehensive tests (6 unit + 3 integration)
 * 50-100x read performance improvement
 
-## Testing & Validation
+## Validation
 
-**Test Infrastructure:**
-* Deterministic cluster simulator (`raft-validation`)
-* Two test modes:
-  * **Timeless**: Fully deterministic, no wall-clock time, total message control
-  * **Timefull**: Wall-clock based, randomized timeouts, realistic timing
-* Simulated network with partitions, message drops, reordering, latency
-* Crash / restart modeling
+The Raft core is validated through 232 comprehensive tests (156 core unit + 76 validation integration) using deterministic and time-based test harnesses. Tests cover all safety properties, adversarial scenarios (partitions, crashes, message drops), and multi-environment execution.
 
-**Test Coverage: 232 tests (156 core unit + 76 validation integration)**
-* Leader election (basic, pre-vote, log restriction, split votes)
-* Log replication and commit advancement
-* Network partitions and healing
-* Snapshot creation, transfer, and crash recovery
-* Conflict resolution and log matching
-* State machine safety and idempotency
-* Dynamic membership (catching-up servers, leader removal)
-* Lease-based linearizable reads
+**Multi-Environment Validation:**
+- ✅ Deterministic simulator (full control over time and message delivery)
+- ✅ Time-based simulator (realistic timing with randomization)
+- ✅ Embassy embedded (5-node QEMU cluster with UDP networking)
 
-**All tests pass deterministically in both test modes.**
-
----
-
-## Multi-Environment Validation
-
-### Embassy (Embedded) ✅
-
-* Embedded-compatible realization (`raft-embassy`)
-* Small, static clusters (3-5 nodes)
-* Embassy executor and timers
-* UDP transport over simulated network
-* In-memory storage with fixed-capacity buffers
-* Postcard serialization (no_std compatible)
-
-**Same Raft core logic runs unchanged in both validation and Embassy environments.**
+See [validation/README.md](validation/README.md) for complete testing documentation.
 
 ---
 

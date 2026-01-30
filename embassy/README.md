@@ -219,16 +219,15 @@ This is a **proof-of-concept**, not production code:
 - No dynamic cluster membership (single-server changes implemented in core)
 - QEMU-only (not tested on real hardware)
 
-### Validated Features
+### Validation
 
-- ✅ **Leader Election**: Randomized timeouts break split-vote deadlocks
-- ✅ **Log Replication**: Entries replicated to quorum with consistency checks
-- ✅ **Commit Index Advancement**: Leader tracks follower progress and advances commit
-- ✅ **Client Request Routing**: Followers transparently forward to leader
-- ✅ **Wait-for-Commit**: Clients block until replication completes
-- ✅ **State Machine Application**: Committed entries applied in order
-- ✅ **Persistent Storage**: Optional file-backed storage via semihosting
-- ✅ **Graceful Shutdown**: Broadcast cancellation to all nodes
+Embassy realization validates that the same Raft core runs unchanged in `no_std` embedded environments. The 5-node cluster demonstrates:
+- Leader election with randomized timeouts
+- Log replication and commit advancement
+- Client request routing and acknowledgments
+- Optional persistent storage via semihosting
+
+See [../validation/README.md](../validation/README.md) for comprehensive test documentation.
 
 ## Project Goals
 
