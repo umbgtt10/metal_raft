@@ -44,13 +44,11 @@ fn test_liveness_connection() {
     cluster.add_node(3);
     cluster.connect_peers();
 
-    // Assert - all nodes should have the same configuration (all members)
-    // Order may vary, so check size and membership instead of exact equality
+    // Assert
     assert_eq!(cluster.get_node(1).peers().unwrap().len(), 3);
     assert_eq!(cluster.get_node(2).peers().unwrap().len(), 3);
     assert_eq!(cluster.get_node(3).peers().unwrap().len(), 3);
 
-    // Verify all nodes are in each configuration
     for node_id in [1, 2, 3] {
         for member in [1, 2, 3] {
             assert!(
@@ -177,7 +175,7 @@ fn test_liveness_election_triggered_followers_respond() {
 
     cluster.deliver_messages();
 
-    // Assert - Node 2 receives pre-vote request, vote request AND heartbeat (leader sends heartbeat immediately)
+    // Assert
     assert_eq!(
         cluster.get_messages(2),
         vec![
@@ -187,7 +185,6 @@ fn test_liveness_election_triggered_followers_respond() {
         ]
     );
 
-    // Assert - Node 3 receives pre-vote request, vote request AND heartbeat
     assert_eq!(
         cluster.get_messages(3),
         vec![
@@ -197,7 +194,6 @@ fn test_liveness_election_triggered_followers_respond() {
         ]
     );
 
-    // Assert - Node 1 receives pre-vote responses, vote responses AND heartbeat responses
     assert_eq!(
         cluster.get_messages(1),
         vec![
@@ -210,7 +206,6 @@ fn test_liveness_election_triggered_followers_respond() {
         ]
     );
 
-    // Assert - Node 1 is now leader
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
     assert_eq!(cluster.get_node(1).current_term(), 1);
 }

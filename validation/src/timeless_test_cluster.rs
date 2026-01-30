@@ -67,11 +67,10 @@ impl TimelessTestCluster {
             message_broker: Arc::new(Mutex::new(MessageBroker::new())),
             message_log: Vec::new(),
             partition_groups: None,
-            snapshot_threshold: 10, // Default threshold
+            snapshot_threshold: 10,
         }
     }
 
-    /// Create a new cluster with N nodes already added and connected
     pub fn with_nodes(n: usize) -> Self {
         let mut cluster = Self::new();
         for i in 1..=n {
@@ -81,7 +80,6 @@ impl TimelessTestCluster {
         cluster
     }
 
-    /// Configure snapshot threshold for all nodes (must be called before adding nodes)
     pub fn with_snapshot_threshold(mut self, threshold: u64) -> Self {
         self.snapshot_threshold = threshold;
         self
@@ -112,7 +110,6 @@ impl TimelessTestCluster {
         let node_ids: Vec<NodeId> = self.nodes.keys().copied().collect();
 
         for &node_id in &node_ids {
-            // Build expected peer list for this node
             let mut expected_peers = InMemoryNodeCollection::new();
             for &peer_id in &node_ids {
                 if peer_id != node_id {
@@ -120,7 +117,6 @@ impl TimelessTestCluster {
                 }
             }
 
-            // Skip if this node already has the correct peers
             if let Some(current_peers) = self.nodes[&node_id].peers() {
                 if current_peers.len() == expected_peers.len() {
                     let mut peers_match = true;
@@ -143,15 +139,11 @@ impl TimelessTestCluster {
                 }
             }
 
-            // Get the old node's storage and state machine
             let old_node = self.nodes.swap_remove(&node_id).unwrap();
             let storage = old_node.storage().clone();
             let state_machine = old_node.state_machine().clone();
-
-            // Create new transport with same broker
             let transport = InMemoryTransport::new(node_id, self.message_broker.clone());
 
-            // Re-create the node with updated peers
             let new_node = RaftNodeBuilder::new(node_id, storage, state_machine)
                 .with_snapshot_threshold(self.snapshot_threshold)
                 .with_election(ElectionManager::new(FrozenTimer))
@@ -164,13 +156,11 @@ impl TimelessTestCluster {
 
     pub fn deliver_messages(&mut self) {
         loop {
-            // Collect all messages first to avoid borrowing issues
             let mut messages_to_deliver = Vec::new();
             {
                 let mut broker = self.message_broker.lock().unwrap();
                 for &node_id in self.nodes.keys() {
                     while let Some((from, msg)) = broker.dequeue(node_id) {
-                        // Check if partition is active
                         let should_deliver = if let Some((group1, group2)) = &self.partition_groups
                         {
                             (group1.contains(&from) && group1.contains(&node_id))
@@ -190,7 +180,6 @@ impl TimelessTestCluster {
                 break;
             }
 
-            // Now deliver messages to nodes (lock released at end of scope above)
             for (to, from, msg) in messages_to_deliver {
                 self.message_log.push((from, to, msg.clone()));
                 if let Some(node) = self.nodes.get_mut(&to) {
@@ -229,7 +218,6 @@ impl TimelessTestCluster {
             .collect()
     }
 
-    /// Get all messages in the message log
     pub fn get_all_messages(
         &self,
     ) -> &[(
@@ -248,7 +236,6 @@ impl TimelessTestCluster {
         self.message_log.len()
     }
 
-    /// Get messages from a specific sender to a specific recipient
     pub fn get_messages_from(
         &self,
         from: NodeId,
@@ -267,12 +254,10 @@ impl TimelessTestCluster {
             .collect()
     }
 
-    /// Clear the message log
     pub fn clear_message_log(&mut self) {
         self.message_log.clear();
     }
 
-    /// Deliver a single message from one node to another
     pub fn deliver_message_from_to(&mut self, from: NodeId, to: NodeId) {
         let mut broker = self.message_broker.lock().unwrap();
         if let Some((sender, msg)) = broker.dequeue_from(to, from) {
@@ -284,28 +269,22 @@ impl TimelessTestCluster {
         }
     }
 
-    /// Remove a node from the cluster
     pub fn remove_node(&mut self, id: NodeId) {
         self.nodes.swap_remove(&id);
     }
 
-    /// Reconnect a node to the cluster by updating peer lists
     pub fn reconnect_node(&mut self, _id: NodeId) {
-        // Simply reconnect peers - this will update all nodes' peer lists
         self.connect_peers();
     }
 
-    /// Partition the network into two groups
     pub fn partition(&mut self, group1: &[NodeId], group2: &[NodeId]) {
         self.partition_groups = Some((group1.to_vec(), group2.to_vec()));
     }
 
-    /// Heal the network partition
     pub fn heal_partition(&mut self) {
         self.partition_groups = None;
     }
 
-    /// Partition a single node from the rest of the cluster
     pub fn partition_node(&mut self, node_id: NodeId) {
         let other_nodes: Vec<NodeId> = self
             .nodes
@@ -316,12 +295,10 @@ impl TimelessTestCluster {
         self.partition_groups = Some((vec![node_id], other_nodes));
     }
 
-    /// Heal partition for a specific node (reconnect it to cluster)
     pub fn heal_partition_node(&mut self, _node_id: NodeId) {
         self.partition_groups = None;
     }
 
-    /// Deliver messages only within the specified partition
     pub fn deliver_messages_partition(&mut self, partition: &[NodeId]) {
         loop {
             let mut messages_to_deliver = Vec::new();
@@ -329,7 +306,6 @@ impl TimelessTestCluster {
                 let mut broker = self.message_broker.lock().unwrap();
                 for &node_id in partition {
                     while let Some((from, msg)) = broker.dequeue(node_id) {
-                        // Only deliver if sender is also in the partition
                         if partition.contains(&from) {
                             messages_to_deliver.push((node_id, from, msg));
                         }

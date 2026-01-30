@@ -61,11 +61,10 @@ impl TimefullTestCluster {
             broker: Arc::new(Mutex::new(MessageBroker::new())),
             message_log: Vec::new(),
             clock: MockClock::new(),
-            snapshot_threshold: 10, // Default threshold
+            snapshot_threshold: 10,
         }
     }
 
-    /// Configure snapshot threshold for all nodes (must be called before adding nodes)
     pub fn with_snapshot_threshold(mut self, threshold: u64) -> Self {
         self.snapshot_threshold = threshold;
         self
@@ -79,7 +78,7 @@ impl TimefullTestCluster {
         self.nodes.get_mut(&id).unwrap()
     }
 
-    pub fn add_node_with_timeout(
+    pub fn add_node_with_timeouts(
         &mut self,
         id: NodeId,
         election_timeout_min: u64,
@@ -90,7 +89,7 @@ impl TimefullTestCluster {
         let timer = MockTimerService::new(
             election_timeout_min,
             election_timeout_max,
-            50, // heartbeat interval (fixed)
+            50,
             self.clock.clone(),
             id,
         );
@@ -105,9 +104,8 @@ impl TimefullTestCluster {
         self.nodes.insert(id, node);
     }
 
-    /// Add node with default timeouts (convenience method)
     pub fn add_node(&mut self, id: NodeId) {
-        self.add_node_with_timeout(id, 150, 300);
+        self.add_node_with_timeouts(id, 150, 300);
     }
 
     pub fn connect_peers(&mut self) {
@@ -115,7 +113,6 @@ impl TimefullTestCluster {
         let node_ids: Vec<NodeId> = self.nodes.keys().cloned().collect();
 
         for &node_id in &node_ids {
-            // Build peer list for this node
             let mut peers = InMemoryNodeCollection::new();
             for &pid in &peer_ids {
                 if pid != node_id {
@@ -123,16 +120,13 @@ impl TimefullTestCluster {
                 }
             }
 
-            // Get the old node's storage and state machine
             let old_node = self.nodes.swap_remove(&node_id).unwrap();
             let storage = old_node.storage().clone();
             let state_machine = old_node.state_machine().clone();
             let timer = old_node.timer_service().clone();
 
-            // Create new transport with same broker
             let transport = InMemoryTransport::new(node_id, self.broker.clone());
 
-            // Re-create the node with updated peers
             let new_node = RaftNodeBuilder::new(node_id, storage, state_machine)
                 .with_snapshot_threshold(self.snapshot_threshold)
                 .with_election(ElectionManager::new(timer))
@@ -143,7 +137,6 @@ impl TimefullTestCluster {
         }
     }
 
-    /// Check all timers and fire events for expired ones
     pub fn process_timer_events(&mut self) {
         let node_ids: Vec<NodeId> = self.nodes.keys().cloned().collect();
 
