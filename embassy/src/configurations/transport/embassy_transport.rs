@@ -15,7 +15,6 @@ type Outbox = Vec<(
     RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
 )>;
 
-/// Transport wrapper that queues messages for async sending
 #[derive(Clone)]
 pub struct EmbassyTransport {
     outbox: Arc<Mutex<RefCell<Outbox>>>,
@@ -48,7 +47,6 @@ impl Transport for EmbassyTransport {
         target: NodeId,
         msg: RaftMsg<Self::Payload, Self::LogEntries, Self::ChunkCollection>,
     ) {
-        // Queue message for async sending
         critical_section::with(|cs| {
             self.outbox.borrow(cs).borrow_mut().push((target, msg));
         });

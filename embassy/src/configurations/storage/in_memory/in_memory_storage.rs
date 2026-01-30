@@ -40,7 +40,7 @@ pub struct EmbassySnapshotBuilder {
     data: Vec<u8, 512>,
 }
 
-impl raft_core::snapshot::SnapshotBuilder for EmbassySnapshotBuilder {
+impl SnapshotBuilder for EmbassySnapshotBuilder {
     type Output = EmbassySnapshotData;
     type ChunkInput = HeaplessChunkVec<512>;
 
@@ -52,12 +52,12 @@ impl raft_core::snapshot::SnapshotBuilder for EmbassySnapshotBuilder {
         &mut self,
         _offset: usize,
         chunk: Self::ChunkInput,
-    ) -> Result<(), raft_core::snapshot::SnapshotBuildError> {
+    ) -> Result<(), SnapshotBuildError> {
         // Append chunk data to our buffer
         for byte in chunk.as_slice() {
             self.data
                 .push(*byte)
-                .map_err(|_| raft_core::snapshot::SnapshotBuildError::OutOfBounds)?;
+                .map_err(|_| SnapshotBuildError::OutOfBounds)?;
         }
         Ok(())
     }
@@ -66,7 +66,7 @@ impl raft_core::snapshot::SnapshotBuilder for EmbassySnapshotBuilder {
         self.data.len() >= expected_size
     }
 
-    fn build(self) -> Result<Self::Output, raft_core::snapshot::SnapshotBuildError> {
+    fn build(self) -> Result<Self::Output, SnapshotBuildError> {
         Ok(EmbassySnapshotData { data: self.data })
     }
 }
@@ -204,17 +204,14 @@ impl Storage for InMemoryStorage {
         last_included_index: LogIndex,
         last_included_term: Term,
     ) -> Result<(), raft_core::snapshot::SnapshotError> {
-        // For single-chunk transfers (embassy typical case)
         if offset == 0 && done {
-            // Convert HeaplessChunkVec to Vec<u8, 512>
             let mut data = Vec::new();
             for byte in chunk.as_slice() {
-                data.push(*byte)
-                    .map_err(|_| raft_core::snapshot::SnapshotError::CorruptData)?;
+                data.push(*byte).map_err(|_| SnapshotError::CorruptData)?;
             }
             let snapshot_data = EmbassySnapshotData { data };
-            let snapshot = raft_core::snapshot::Snapshot {
-                metadata: raft_core::snapshot::SnapshotMetadata {
+            let snapshot = Snapshot {
+                metadata: SnapshotMetadata {
                     last_included_index,
                     last_included_term,
                 },
@@ -223,36 +220,30 @@ impl Storage for InMemoryStorage {
             self.snapshot = Some(snapshot);
             Ok(())
         } else {
-            // Multi-chunk not supported in this simple implementation
-            Err(raft_core::snapshot::SnapshotError::CorruptData)
+            Err(SnapshotError::CorruptData)
         }
     }
 
     fn finalize_snapshot(
         &mut self,
         builder: Self::SnapshotBuilder,
-        metadata: raft_core::snapshot::SnapshotMetadata,
-    ) -> Result<(), raft_core::snapshot::SnapshotError> {
-        let data = builder
-            .build()
-            .map_err(|_| raft_core::snapshot::SnapshotError::CorruptData)?;
-        self.snapshot = Some(raft_core::snapshot::Snapshot { metadata, data });
+        metadata: SnapshotMetadata,
+    ) -> Result<(), SnapshotError> {
+        let data = builder.build().map_err(|_| SnapshotError::CorruptData)?;
+        self.snapshot = Some(Snapshot { metadata, data });
         Ok(())
     }
 
     fn discard_entries_before(&mut self, index: LogIndex) {
-        // Discard entries with log index < index
         if index <= self.first_log_index {
-            return; // Nothing to discard
+            return;
         }
 
         let num_to_discard = (index - self.first_log_index) as usize;
 
         if num_to_discard >= self.log.len() {
-            // Discard all entries
             self.log.clear();
         } else {
-            // Shift remaining entries to beginning
             let mut new_log = Vec::new();
             for i in num_to_discard..self.log.len() {
                 let _ = new_log.push(self.log[i].clone());

@@ -24,15 +24,12 @@ use raft_core::types::NodeId;
 ///    warned by the compiler are acceptable in this specific `no_std` context.
 #[allow(async_fn_in_trait)]
 pub trait AsyncTransport {
-    /// Send a message to a specific peer
     async fn send(
         &mut self,
         to: NodeId,
         message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
     );
 
-    /// Receive a message from any peer
-    /// Returns (sender_node_id, message)
     async fn recv(
         &mut self,
     ) -> (
@@ -40,13 +37,10 @@ pub trait AsyncTransport {
         RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
     );
 
-    /// Optional: Broadcast to all peers
-    /// Default implementation sends individually
     async fn broadcast(
         &mut self,
         message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
     ) {
-        // Default: not implemented, let sender handle it
         let _ = message;
     }
 }

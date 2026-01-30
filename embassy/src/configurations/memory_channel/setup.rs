@@ -5,8 +5,7 @@
 use crate::cancellation_token::CancellationToken;
 use crate::client_channel_hub::ClientChannelHub;
 use crate::configurations::storage::InMemoryStorage;
-use crate::configurations::transport::channel::transport::ChannelTransportHub;
-use crate::configurations::transport::channel::ChannelTransport;
+use crate::configurations::transport::channel::transport::{ChannelTransport, ChannelTransportHub};
 use crate::embassy_node::EmbassyNode;
 use crate::info;
 use crate::raft_client::RaftClient;

@@ -6,21 +6,18 @@
 pub mod storage;
 pub mod transport;
 
-// Ensure at least one configuration is selected
 #[cfg(not(any(
     all(feature = "in-memory-storage", feature = "channel-transport"),
     all(feature = "semihosting-storage", feature = "udp-transport")
 )))]
 compile_error!("Must select exactly one configuration: either 'in-memory-storage,channel-transport' or 'semihosting-storage,udp-transport'");
 
-// Configuration modules (feature-gated)
 #[cfg(all(feature = "in-memory-storage", feature = "channel-transport"))]
 pub mod memory_channel;
 
 #[cfg(all(feature = "semihosting-storage", feature = "udp-transport"))]
 pub mod semihosting_udp;
 
-// Re-export the active configuration's setup module
 #[cfg(all(feature = "in-memory-storage", feature = "channel-transport"))]
 pub use memory_channel::setup;
 

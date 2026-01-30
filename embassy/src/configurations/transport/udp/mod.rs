@@ -4,5 +4,6 @@
 
 pub mod config;
 pub mod driver;
+pub mod udp_transport_hub;
 pub mod serde_raft_message;
 pub mod transport;

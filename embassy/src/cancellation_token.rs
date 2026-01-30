@@ -18,17 +18,14 @@ impl CancellationToken {
         }
     }
 
-    /// Cancel all tasks waiting on this token
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::Release);
     }
 
-    /// Check if cancellation has been requested (non-blocking)
     pub fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::Acquire)
     }
 
-    /// Wait for cancellation (async) - polls every 10ms
     pub async fn wait(&self) {
         while !self.is_cancelled() {
             embassy_time::Timer::after(Duration::from_millis(10)).await;

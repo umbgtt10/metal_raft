@@ -31,11 +31,12 @@ pub mod time_driver;
 use cancellation_token::CancellationToken;
 use client_channel_hub::ClientChannelHub;
 
+use crate::configurations::setup::initialize_client;
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     heap::init_heap();
 
-    // Initialize Time Driver (SysTick) for QEMU
     let mut p = cortex_m::Peripherals::take().unwrap();
     time_driver::init(&mut p.SYST);
 
@@ -44,21 +45,12 @@ async fn main(spawner: Spawner) {
 
     let cancel = CancellationToken::default();
 
-    // Read observer level from config
     let observer_level = config::get_observer_level();
     info!("Observer level: {:?}", observer_level);
 
-    // Create client channel hub for client-to-node communication
-    let client_hub = ClientChannelHub::new();
-
-    // Initialize client (handles communication with Raft cluster)
-    let client = configurations::setup::initialize_cluster(
-        &client_hub,
-        spawner,
-        cancel.clone(),
-        observer_level,
-    )
-    .await;
+    let client_channel_hub = ClientChannelHub::new();
+    let client =
+        initialize_client(&client_channel_hub, spawner, cancel.clone(), observer_level).await;
 
     info!("All nodes started.");
 
