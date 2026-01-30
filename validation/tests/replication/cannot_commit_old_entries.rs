@@ -19,46 +19,52 @@ fn test_safety_cannot_commit_old_term_entry() {
     cluster.add_node(5);
     cluster.connect_peers();
 
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
+
+    // Assert
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
     assert_eq!(cluster.get_node(1).current_term(), 1);
 
+    // Act
     cluster.partition(&[1, 2], &[3, 4, 5]);
-
     cluster
         .get_node_mut(1)
         .on_event(Event::ClientCommand("SET x=1".to_string()));
     cluster.deliver_messages_partition(&[1, 2]);
 
+    // Assert
     assert_eq!(cluster.get_node(1).storage().last_log_index(), 1);
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 1);
     assert_eq!(cluster.get_node(1).commit_index(), 0);
 
+    // Act
     cluster.remove_node(1);
     cluster.heal_partition();
     cluster.connect_peers();
-
     cluster
         .get_node_mut(2)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
+    // Assert
     assert_eq!(*cluster.get_node(2).role(), NodeState::Leader);
     assert_eq!(cluster.get_node(2).current_term(), 2);
 
+    // Act
     cluster
         .get_node_mut(2)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
 
+    // Assert
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 1);
     assert_eq!(cluster.get_node(3).storage().last_log_index(), 1);
     assert_eq!(cluster.get_node(4).storage().last_log_index(), 1);
     assert_eq!(cluster.get_node(5).storage().last_log_index(), 1);
-
     assert_eq!(cluster.get_node(2).commit_index(), 0);
     assert_eq!(cluster.get_node(3).commit_index(), 0);
     assert_eq!(cluster.get_node(4).commit_index(), 0);
@@ -68,7 +74,6 @@ fn test_safety_cannot_commit_old_term_entry() {
         .get_node_mut(2)
         .on_event(Event::ClientCommand("SET y=2".to_string()));
     cluster.deliver_messages();
-
     cluster
         .get_node_mut(2)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));

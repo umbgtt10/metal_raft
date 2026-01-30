@@ -11,12 +11,17 @@ use raft_validation::timeless_test_cluster::TimelessTestCluster;
 fn test_safety_state_machine_execution_order() {
     // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(3);
+
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
-    cluster.deliver_messages();
+
+    // Assert
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
+
+    // Act
     for i in 1..=5 {
         let cmd = format!("SET k{}=v{}", i, i);
         cluster.get_node_mut(1).on_event(Event::ClientCommand(cmd));
@@ -26,6 +31,8 @@ fn test_safety_state_machine_execution_order() {
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
+
+    // Assert
     for id in 1..=3 {
         let sm = cluster.get_node(id).state_machine();
         for i in 1..=5 {
@@ -40,13 +47,12 @@ fn test_safety_state_machine_execution_order() {
             );
         }
     }
-    cluster.partition_node(1);
 
     // Act
+    cluster.partition_node(1);
     cluster
         .get_node_mut(2)
         .on_event(Event::TimerFired(TimerKind::Election));
-    cluster.deliver_messages();
     cluster.deliver_messages();
 
     // Assert
@@ -81,7 +87,6 @@ fn test_safety_state_machine_execution_order() {
     cluster
         .get_node_mut(2)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
-    cluster.deliver_messages();
     cluster.deliver_messages();
 
     // Assert

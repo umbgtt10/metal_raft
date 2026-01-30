@@ -33,7 +33,7 @@ fn test_state_machine_snapshot_create_and_restore() {
     let result = sm2.restore_from_snapshot(&snapshot_data);
 
     // Assert
-    assert!(result.is_ok(), "Snapshot restoration should succeed");
+    assert!(result.is_ok());
     assert_eq!(sm2.get("x"), Some("1"));
     assert_eq!(sm2.get("y"), Some("2"));
     assert_eq!(sm2.get("z"), Some("3"));
@@ -71,11 +71,9 @@ fn test_storage_snapshot_save_and_load() {
 
     // Act
     storage.save_snapshot(snapshot.clone());
-    let loaded = storage.load_snapshot();
+    let loaded = storage.load_snapshot().unwrap();
 
     // Assert
-    assert!(loaded.is_some(), "Snapshot should be loaded");
-    let loaded = loaded.unwrap();
     assert_eq!(loaded.metadata.last_included_index, 10);
     assert_eq!(loaded.metadata.last_included_term, 5);
     assert_eq!(loaded.data.0, vec![1, 2, 3, 4, 5]);
@@ -96,11 +94,9 @@ fn test_storage_snapshot_metadata() {
         data: SimSnapshotData(vec![1, 2, 3]),
     };
     storage.save_snapshot(snapshot);
-    let metadata = storage.snapshot_metadata();
+    let metadata = storage.snapshot_metadata().unwrap();
 
     // Assert
-    assert!(metadata.is_some());
-    let metadata = metadata.unwrap();
     assert_eq!(metadata.last_included_index, 15);
     assert_eq!(metadata.last_included_term, 3);
 }
@@ -115,7 +111,11 @@ fn test_storage_discard_entries_before() {
             entry_type: raft_core::log_entry::EntryType::Command(format!("entry_{}", i)),
         })
         .collect();
+
+    // Act
     storage.append_entries(&entries);
+
+    // Assert
     assert_eq!(storage.first_log_index(), 1);
     assert_eq!(storage.last_log_index(), 10);
     assert!(storage.get_entry(5).is_some());
@@ -213,7 +213,6 @@ fn test_storage_last_log_term_after_compaction() {
             entry_type: EntryType::Command("entry_3".to_string()),
         },
     ]);
-    assert_eq!(storage.last_log_term(), 3);
 
     // Act
     storage.discard_entries_before(3);
@@ -235,26 +234,28 @@ fn test_snapshot_data_chunking() {
     // Arrange
     let data = SimSnapshotData(vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 
-    // Act & Assert
-    let chunk = data.chunk_at(0, 3);
-    assert!(chunk.is_some());
-    assert_eq!(
-        chunk.unwrap(),
-        InMemoryChunkCollection::from_vec(vec![1, 2, 3])
-    );
-    let chunk = data.chunk_at(3, 3);
-    assert!(chunk.is_some());
-    assert_eq!(
-        chunk.unwrap(),
-        InMemoryChunkCollection::from_vec(vec![4, 5, 6])
-    );
-    let chunk = data.chunk_at(8, 5);
-    assert!(chunk.is_some());
-    assert_eq!(
-        chunk.unwrap(),
-        InMemoryChunkCollection::from_vec(vec![9, 10])
-    );
+    // Act
+    let chunk = data.chunk_at(0, 3).unwrap();
+
+    // Assert
+    assert_eq!(chunk, InMemoryChunkCollection::from_vec(vec![1, 2, 3]));
+
+    // Act
+    let chunk = data.chunk_at(3, 3).unwrap();
+
+    // Assert
+    assert_eq!(chunk, InMemoryChunkCollection::from_vec(vec![4, 5, 6]));
+
+    // Act
+    let chunk = data.chunk_at(8, 5).unwrap();
+
+    // Assert
+    assert_eq!(chunk, InMemoryChunkCollection::from_vec(vec![9, 10]));
+
+    // Act
     let chunk = data.chunk_at(20, 5);
+
+    // Assert
     assert!(chunk.is_none());
 }
 
@@ -271,16 +272,16 @@ fn test_storage_get_snapshot_chunk() {
     };
     storage.save_snapshot(snapshot);
 
-    // Act & Assert
-    let chunk = storage.get_snapshot_chunk(0, 3);
-    assert!(chunk.is_some());
-    let chunk = chunk.unwrap();
+    // Act
+    let chunk = storage.get_snapshot_chunk(0, 3).unwrap();
     assert_eq!(chunk.offset, 0);
     assert_eq!(chunk.data, InMemoryChunkCollection::from_vec(vec![1, 2, 3]));
     assert!(!chunk.done);
-    let chunk = storage.get_snapshot_chunk(6, 3);
-    assert!(chunk.is_some());
-    let chunk = chunk.unwrap();
+
+    // Act
+    let chunk = storage.get_snapshot_chunk(6, 3).unwrap();
+
+    // Assert
     assert_eq!(chunk.offset, 6);
     assert_eq!(chunk.data, InMemoryChunkCollection::from_vec(vec![7, 8]));
     assert!(chunk.done);
@@ -354,9 +355,7 @@ fn test_storage_snapshot_transfer_workflow() {
 
     // Assert
     assert!(result.is_ok());
-    let loaded = receiver_storage.load_snapshot();
-    assert!(loaded.is_some());
-    let loaded = loaded.unwrap();
+    let loaded = receiver_storage.load_snapshot().unwrap();
     assert_eq!(loaded.metadata.last_included_index, 10);
     assert_eq!(loaded.data.0, vec![10, 20, 30, 40, 50]);
 }

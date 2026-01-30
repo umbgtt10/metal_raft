@@ -48,32 +48,25 @@ fn test_node_restarts_and_restores_from_snapshot() {
         );
     }
 
+    // Act
     let saved_storage = cluster.get_node(1).storage().clone();
     let saved_term = cluster.get_node(1).current_term();
-
-    // Act
     cluster.remove_node(1);
     cluster.add_node_with_storage(1, saved_storage);
 
     // Assert
     let recovered_node = cluster.get_node(1);
-
     for i in 1..=10 {
         assert_eq!(
             recovered_node.state_machine().get(&format!("key{}", i)),
             Some(&format!("value{}", i)[..])
         );
     }
-
     assert_eq!(recovered_node.storage().first_log_index(), 11);
     assert_eq!(recovered_node.current_term(), saved_term);
 
-    let snapshot_after_restart = recovered_node.storage().load_snapshot();
-    assert!(snapshot_after_restart.is_some());
-    assert_eq!(
-        snapshot_after_restart.unwrap().metadata.last_included_index,
-        10
-    );
+    let snapshot_after_restart = recovered_node.storage().load_snapshot().unwrap();
+    assert_eq!(snapshot_after_restart.metadata.last_included_index, 10);
 }
 
 #[test]
@@ -99,8 +92,8 @@ fn test_restart_with_snapshot_and_remaining_entries() {
     }
 
     // Assert
-    let snapshot = cluster.get_node(1).storage().load_snapshot();
-    assert_eq!(snapshot.unwrap().metadata.last_included_index, 10);
+    let snapshot = cluster.get_node(1).storage().load_snapshot().unwrap();
+    assert_eq!(snapshot.metadata.last_included_index, 10);
     assert_eq!(cluster.get_node(1).commit_index(), 15);
 
     // Act

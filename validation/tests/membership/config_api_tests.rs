@@ -432,10 +432,7 @@ fn test_config_change_with_leader_crash() {
     let config_index = cluster.get_node(2).storage().last_log_index();
 
     // Assert
-    assert!(
-        config_index > 0,
-        "Config change should be replicated to follower before leader crashes"
-    );
+    assert!(config_index > 0);
 
     // Act
     let saved_storage = cluster.get_node(1).storage().clone();
@@ -477,11 +474,7 @@ fn test_config_change_with_leader_crash() {
     }
 
     // Assert
-    assert!(
-        cluster.get_node(new_leader).is_committed(config_index),
-        "New leader should commit the config change from crashed leader"
-    );
-
+    assert!(cluster.get_node(new_leader).is_committed(config_index));
     assert_eq!(cluster.get_node(new_leader).config().size(), 6);
     assert!(cluster.get_node(new_leader).config().contains(6));
 
@@ -494,10 +487,7 @@ fn test_config_change_with_leader_crash() {
     let final_index = cluster.get_node(new_leader).storage().last_log_index();
 
     // Assert
-    assert!(
-        cluster.get_node(new_leader).is_committed(final_index),
-        "Cluster should continue operating after leader crash during config change"
-    );
+    assert!(cluster.get_node(new_leader).is_committed(final_index));
 
     // Act
     cluster.add_node_with_storage(1, saved_storage);
@@ -511,11 +501,7 @@ fn test_config_change_with_leader_crash() {
     }
 
     // Assert
-    assert_eq!(
-        cluster.get_node(1).config().size(),
-        6,
-        "Recovered node should have new configuration"
-    );
+    assert_eq!(cluster.get_node(1).config().size(), 6);
     assert!(cluster.get_node(1).config().contains(6));
 }
 

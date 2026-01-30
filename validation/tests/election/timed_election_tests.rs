@@ -69,9 +69,9 @@ fn test_liveness_split_vote_then_recovery() {
 
     let mut elected = false;
 
+    // Act
     for _ in 1..=5 {
         for _ in 0..15 {
-            // Act
             cluster.advance_time(30);
             cluster.deliver_messages();
 

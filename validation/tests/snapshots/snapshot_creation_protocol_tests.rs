@@ -33,9 +33,7 @@ fn test_leader_creates_snapshot_after_threshold() {
 
     // Assert
     assert_eq!(cluster.get_node(1).commit_index(), 10);
-    let snapshot = cluster.get_node(1).storage().load_snapshot();
-    assert!(snapshot.is_some());
-    let snapshot = snapshot.unwrap();
+    let snapshot = cluster.get_node(1).storage().load_snapshot().unwrap();
     assert_eq!(snapshot.metadata.last_included_index, 10);
     assert_eq!(snapshot.metadata.last_included_term, 1);
 
@@ -44,7 +42,7 @@ fn test_leader_creates_snapshot_after_threshold() {
     let restore_result = test_sm.restore_from_snapshot(&snapshot.data);
 
     // Assert
-    assert!(restore_result.is_ok(), "Snapshot should be restorable");
+    assert!(restore_result.is_ok());
     for i in 1..=10 {
         let expected = format!("value{}", i);
         assert_eq!(test_sm.get(&format!("key{}", i)), Some(&expected[..]));

@@ -16,10 +16,13 @@ fn test_liveness_client_command_replication() {
     cluster.add_node(3);
     cluster.connect_peers();
 
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
+
+    // Assert
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
 
     // Act

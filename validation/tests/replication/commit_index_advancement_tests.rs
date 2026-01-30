@@ -14,10 +14,13 @@ fn test_liveness_commit_index_advancement() {
     cluster.add_node(3);
     cluster.connect_peers();
 
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
+
+    // Assert
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
 
     // Act
@@ -29,11 +32,13 @@ fn test_liveness_commit_index_advancement() {
     // Assert
     assert_eq!(cluster.get_node(1).commit_index(), 1);
 
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
 
+    // Assert
     assert_eq!(cluster.get_node(2).commit_index(), 1);
     assert_eq!(cluster.get_node(3).commit_index(), 1);
 }

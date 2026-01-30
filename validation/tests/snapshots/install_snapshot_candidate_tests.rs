@@ -8,7 +8,6 @@ use raft_core::{
 use raft_test_utils::in_memory_chunk_collection::InMemoryChunkCollection;
 use raft_validation::timeless_test_cluster::TimelessTestCluster;
 
-/// Test that a candidate receiving InstallSnapshot at the current term steps down
 #[test]
 fn test_safety_candidate_steps_down_on_install_snapshot_same_term() {
     // Arrange

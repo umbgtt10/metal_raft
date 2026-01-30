@@ -16,17 +16,22 @@ fn test_safety_append_entries_idempotency() {
     cluster.add_node(2);
     cluster.connect_peers();
 
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
+
+    // Assert
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
 
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ClientCommand("SET x=1".to_string()));
     cluster.deliver_messages();
 
+    // Assert
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 1);
     let entry = cluster.get_node(2).storage().get_entry(1).unwrap();
     if let EntryType::Command(ref p) = entry.entry_type {
@@ -48,10 +53,12 @@ fn test_safety_append_entries_idempotency() {
         assert_eq!(p, "SET x=1");
     }
 
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
 
+    // Assert
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 1);
 }
