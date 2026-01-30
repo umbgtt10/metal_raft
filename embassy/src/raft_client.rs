@@ -12,7 +12,6 @@ use embassy_sync::channel::{Channel, Sender};
 use embassy_time::Duration;
 use raft_core::types::NodeId;
 
-// Response channels for client requests
 static CLIENT_WRITE_RESPONSE_CHANNEL: Channel<
     CriticalSectionRawMutex,
     Result<(), ClusterError>,
@@ -25,46 +24,33 @@ static CLIENT_READ_RESPONSE_CHANNEL: Channel<
     1,
 > = Channel::new();
 
-/// Client request to Raft cluster
 #[derive(Clone)]
 pub enum ClientRequest {
-    /// Write command to replicated log
     Write {
         payload: String,
         response_tx: Sender<'static, CriticalSectionRawMutex, Result<(), ClusterError>, 1>,
     },
-    /// Read value from state machine
     Read {
         key: String,
         response_tx:
             Sender<'static, CriticalSectionRawMutex, Result<Option<String>, ClusterError>, 1>,
     },
-    /// Get current leader (for client redirection)
     GetLeader,
 }
 
-/// Error types for cluster operations
 #[derive(Debug, Clone, Copy)]
 pub enum ClusterError {
-    /// No leader currently elected (with optional hint)
     NotLeader { hint: Option<NodeId> },
-    /// Channel send failed
     ChannelFull,
-    /// Timeout waiting for response
     Timeout,
 }
 
-/// Client handle for interacting with a Raft cluster
 pub struct RaftClient {
-    /// Client channels (one per node for requests)
     client_channels: [ClientSender; 5],
-
-    /// For graceful shutdown
     cancel: CancellationToken,
 }
 
 impl RaftClient {
-    /// Create new cluster handle with provided channel senders
     pub fn new(client_channels: [ClientSender; 5], cancel: CancellationToken) -> Self {
         Self {
             client_channels,
@@ -72,14 +58,11 @@ impl RaftClient {
         }
     }
 
-    /// Submit a write command to the cluster
-    /// Tries nodes in sequence, following leader hints on redirects
     pub async fn submit_command(&self, payload: String) -> Result<(), ClusterError> {
-        let mut target_node = 0; // Start with node 0
+        let mut target_node = 0;
         let max_retries = 3;
 
         for attempt in 0..max_retries {
-            // Clear any previous responses
             while CLIENT_WRITE_RESPONSE_CHANNEL.try_receive().is_ok() {}
 
             let req = ClientRequest::Write {
@@ -87,23 +70,20 @@ impl RaftClient {
                 response_tx: CLIENT_WRITE_RESPONSE_CHANNEL.sender(),
             };
 
-            // Send to target node
             if self.client_channels[target_node].try_send(req).is_err() {
                 return Err(ClusterError::ChannelFull);
             }
 
-            // Wait for response
             match embassy_time::with_timeout(
                 Duration::from_secs(5),
                 CLIENT_WRITE_RESPONSE_CHANNEL.receive(),
             )
             .await
             {
-                Ok(Ok(())) => return Ok(()), // Success!
+                Ok(Ok(())) => return Ok(()),
                 Ok(Err(ClusterError::NotLeader {
                     hint: Some(leader_id),
                 })) => {
-                    // Follow the hint
                     target_node = (leader_id - 1) as usize;
                     if attempt < max_retries - 1 {
                         embassy_time::Timer::after(Duration::from_millis(50)).await;
@@ -117,14 +97,11 @@ impl RaftClient {
         Err(ClusterError::NotLeader { hint: None })
     }
 
-    /// Read a value from the state machine
-    /// Tries nodes in sequence, following leader hints on redirects
     pub async fn read_value(&self, key: &str) -> Result<Option<String>, ClusterError> {
-        let mut target_node = 0; // Start with node 0
+        let mut target_node = 0;
         let max_retries = 3;
 
         for attempt in 0..max_retries {
-            // Clear any previous responses
             while CLIENT_READ_RESPONSE_CHANNEL.try_receive().is_ok() {}
 
             let req = ClientRequest::Read {
@@ -132,23 +109,20 @@ impl RaftClient {
                 response_tx: CLIENT_READ_RESPONSE_CHANNEL.sender(),
             };
 
-            // Send to target node
             if self.client_channels[target_node].try_send(req).is_err() {
                 return Err(ClusterError::ChannelFull);
             }
 
-            // Wait for response
             match embassy_time::with_timeout(
                 Duration::from_secs(5),
                 CLIENT_READ_RESPONSE_CHANNEL.receive(),
             )
             .await
             {
-                Ok(Ok(value)) => return Ok(value), // Success!
+                Ok(Ok(value)) => return Ok(value),
                 Ok(Err(ClusterError::NotLeader {
                     hint: Some(leader_id),
                 })) => {
-                    // Follow the hint
                     target_node = (leader_id - 1) as usize;
                     if attempt < max_retries - 1 {
                         embassy_time::Timer::after(Duration::from_millis(50)).await;
@@ -162,7 +136,6 @@ impl RaftClient {
         Err(ClusterError::NotLeader { hint: None })
     }
 
-    /// Initiate graceful shutdown
     pub fn shutdown(&self) {
         self.cancel.cancel();
     }

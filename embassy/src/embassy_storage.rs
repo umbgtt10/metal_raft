@@ -10,19 +10,17 @@ use heapless::Vec;
 use raft_core::{
     collections::{chunk_collection::ChunkCollection, log_entry_collection::LogEntryCollection},
     log_entry::LogEntry,
-    snapshot::{SnapshotBuilder, SnapshotData},
+    snapshot::{Snapshot, SnapshotBuilder, SnapshotData},
     storage::Storage,
     types::{LogIndex, NodeId, Term},
 };
 
-/// Simple in-memory storage for Embassy Raft nodes
-/// In a real system, this would persist to flash
 #[derive(Clone)]
 pub struct EmbassyStorage {
     current_term: Term,
     voted_for: Option<NodeId>,
     log: Vec<LogEntry<String>, 256>, // Max 256 entries
-    snapshot: Option<raft_core::snapshot::Snapshot<EmbassySnapshotData>>,
+    snapshot: Option<Snapshot<EmbassySnapshotData>>,
     first_log_index: LogIndex,
 }
 

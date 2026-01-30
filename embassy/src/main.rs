@@ -57,7 +57,6 @@ async fn main(spawner: Spawner) {
     info!("Waiting for leader election...");
     embassy_time::Timer::after(Duration::from_secs(5)).await;
 
-    // Submit test commands
     info!("Submitting test commands...");
     for i in 1..=3 {
         let command = alloc::format!("key{}=value{}", i, i);
@@ -69,10 +68,8 @@ async fn main(spawner: Spawner) {
     }
     info!("All commands processed!");
 
-    // Wait for replication to complete
     embassy_time::Timer::after(Duration::from_millis(100)).await;
 
-    // Demonstrate efficient reads: Access committed data from state machine
     info!("Reading back committed values...");
     for i in 1..=3 {
         let key = alloc::format!("key{}", i);
@@ -90,13 +87,11 @@ async fn main(spawner: Spawner) {
     }
     info!("All reads completed!");
 
-    // Run for additional time to observe replication
     embassy_time::Timer::after(Duration::from_secs(1)).await;
 
     info!("1 seconds elapsed. Initiating graceful shutdown...");
     client.shutdown();
 
-    // Give tasks time to finish
     embassy_time::Timer::after(Duration::from_millis(500)).await;
 
     info!("Shutdown complete. Exiting.");

@@ -2,8 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-//! Async transport trait for different communication backends
-
 use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
 use alloc::string::String;

@@ -2,7 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-// Enforce mutual exclusivity of storage features
 #[cfg(all(feature = "in-memory-storage", feature = "semihosting-storage"))]
 compile_error!("Features 'in-memory-storage' and 'semihosting-storage' are mutually exclusive.");
 

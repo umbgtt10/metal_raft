@@ -10,7 +10,6 @@ const ELECTION_TIMEOUT_MIN_MS: u64 = 300;
 const ELECTION_TIMEOUT_MAX_MS: u64 = 600;
 const HEARTBEAT_TIMEOUT_MS: u64 = 100;
 
-/// Embassy clock implementation using embassy_time::Instant
 #[derive(Clone, Copy)]
 pub struct EmbassyClock;
 
@@ -23,16 +22,14 @@ impl Clock for EmbassyClock {
     }
 }
 
-/// Embassy-based timer implementation for Raft
 pub struct EmbassyTimer {
     election_deadline: Option<Instant>,
     heartbeat_deadline: Option<Instant>,
-    entropy_state: u64, // Accumulates entropy across timer resets
+    entropy_state: u64,
 }
 
 impl EmbassyTimer {
     pub fn new() -> Self {
-        // Initialize with current ticks for some initial entropy
         Self {
             election_deadline: None,
             heartbeat_deadline: None,
@@ -40,12 +37,9 @@ impl EmbassyTimer {
         }
     }
 
-    /// Generate random election timeout between MIN and MAX
     fn random_election_timeout(&mut self) -> Duration {
-        // Mix current time with accumulated entropy state
         let now_ticks = Instant::now().as_ticks();
 
-        // Simple LCG-style mixing for better entropy
         self.entropy_state = self
             .entropy_state
             .wrapping_mul(6364136223846793005)
