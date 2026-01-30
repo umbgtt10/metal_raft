@@ -53,8 +53,8 @@ pub enum ClientRequest {
 /// Error types for cluster operations
 #[derive(Debug, Clone, Copy)]
 pub enum ClusterError {
-    /// No leader currently elected
-    NoLeader,
+    /// No leader currently elected (with optional hint)
+    NotLeader { hint: Option<NodeId> },
     /// Channel send failed
     ChannelFull,
     /// Timeout waiting for response
@@ -101,78 +101,93 @@ impl RaftCluster {
     }
 
     /// Submit a write command to the cluster
-    /// Sends to a random node - Raft protocol handles forwarding to leader
+    /// Tries nodes in sequence, following leader hints on redirects
     pub async fn submit_command(&self, payload: String) -> Result<(), ClusterError> {
-        // Clear any previous responses
-        while CLIENT_WRITE_RESPONSE_CHANNEL.try_receive().is_ok() {}
+        let mut target_node = 0; // Start with node 0
+        let max_retries = 3;
 
-        let req = ClientRequest::Write {
-            payload,
-            response_tx: CLIENT_WRITE_RESPONSE_CHANNEL.sender(),
-        };
+        for attempt in 0..max_retries {
+            // Clear any previous responses
+            while CLIENT_WRITE_RESPONSE_CHANNEL.try_receive().is_ok() {}
 
-        let mut sent = false;
-        // Try to send to a random node (or all of them)
-        // Since we don't have random here easily, just iterate.
-        // It's effectively "try any available node".
-        for channel in self.client_channels.iter() {
-            if channel.try_send(req.clone()).is_ok() {
-                sent = true;
-                break;
+            let req = ClientRequest::Write {
+                payload: payload.clone(),
+                response_tx: CLIENT_WRITE_RESPONSE_CHANNEL.sender(),
+            };
+
+            // Send to target node
+            if self.client_channels[target_node].try_send(req).is_err() {
+                return Err(ClusterError::ChannelFull);
+            }
+
+            // Wait for response
+            match embassy_time::with_timeout(
+                Duration::from_secs(5),
+                CLIENT_WRITE_RESPONSE_CHANNEL.receive(),
+            )
+            .await
+            {
+                Ok(Ok(())) => return Ok(()), // Success!
+                Ok(Err(ClusterError::NotLeader {
+                    hint: Some(leader_id),
+                })) => {
+                    // Follow the hint
+                    target_node = (leader_id - 1) as usize;
+                    if attempt < max_retries - 1 {
+                        embassy_time::Timer::after(Duration::from_millis(50)).await;
+                    }
+                }
+                Ok(Err(err)) => return Err(err),
+                Err(_) => return Err(ClusterError::Timeout),
             }
         }
 
-        if !sent {
-            return Err(ClusterError::ChannelFull);
-        }
-
-        // Wait for response
-        // In a real system, we'd use IDs to match response to request
-        match embassy_time::with_timeout(
-            Duration::from_secs(10),
-            CLIENT_WRITE_RESPONSE_CHANNEL.receive(),
-        )
-        .await
-        {
-            Ok(result) => result,
-            Err(_) => Err(ClusterError::Timeout),
-        }
+        Err(ClusterError::NotLeader { hint: None })
     }
 
     /// Read a value from the state machine
-    /// Reads are served by the leader (linearizable reads via leases)
+    /// Tries nodes in sequence, following leader hints on redirects
     pub async fn read_value(&self, key: &str) -> Result<Option<String>, ClusterError> {
-        // Clear any previous responses
-        while CLIENT_READ_RESPONSE_CHANNEL.try_receive().is_ok() {}
+        let mut target_node = 0; // Start with node 0
+        let max_retries = 3;
 
-        let req = ClientRequest::Read {
-            key: String::from(key),
-            response_tx: CLIENT_READ_RESPONSE_CHANNEL.sender(),
-        };
+        for attempt in 0..max_retries {
+            // Clear any previous responses
+            while CLIENT_READ_RESPONSE_CHANNEL.try_receive().is_ok() {}
 
-        // Try to send read request to any node
-        let mut sent = false;
-        for channel in self.client_channels.iter() {
-            if channel.try_send(req.clone()).is_ok() {
-                sent = true;
-                break;
+            let req = ClientRequest::Read {
+                key: String::from(key),
+                response_tx: CLIENT_READ_RESPONSE_CHANNEL.sender(),
+            };
+
+            // Send to target node
+            if self.client_channels[target_node].try_send(req).is_err() {
+                return Err(ClusterError::ChannelFull);
+            }
+
+            // Wait for response
+            match embassy_time::with_timeout(
+                Duration::from_secs(5),
+                CLIENT_READ_RESPONSE_CHANNEL.receive(),
+            )
+            .await
+            {
+                Ok(Ok(value)) => return Ok(value), // Success!
+                Ok(Err(ClusterError::NotLeader {
+                    hint: Some(leader_id),
+                })) => {
+                    // Follow the hint
+                    target_node = (leader_id - 1) as usize;
+                    if attempt < max_retries - 1 {
+                        embassy_time::Timer::after(Duration::from_millis(50)).await;
+                    }
+                }
+                Ok(Err(err)) => return Err(err),
+                Err(_) => return Err(ClusterError::Timeout),
             }
         }
 
-        if !sent {
-            return Err(ClusterError::ChannelFull);
-        }
-
-        // Wait for response (with timeout)
-        match embassy_time::with_timeout(
-            Duration::from_secs(5),
-            CLIENT_READ_RESPONSE_CHANNEL.receive(),
-        )
-        .await
-        {
-            Ok(result) => result,
-            Err(_) => Err(ClusterError::Timeout),
-        }
+        Err(ClusterError::NotLeader { hint: None })
     }
 
     /// Initiate graceful shutdown

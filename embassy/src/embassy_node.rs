@@ -12,7 +12,7 @@ use embassy_time::Duration;
 use raft_core::components::message_handler::ReadError;
 
 use crate::cancellation_token::CancellationToken;
-use crate::cluster::{ClientRequest, ClusterError, RaftCluster};
+use crate::cluster::{ClientRequest, ClusterError};
 use crate::collections::embassy_config_change_collection::EmbassyConfigChangeCollection;
 use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::collections::embassy_map_collection::EmbassyMapCollection;
@@ -214,14 +214,15 @@ impl<
                     }
                     Err(ClientError::NotLeader { leader_hint }) => {
                         if let Some(leader) = leader_hint {
-                            info!("Node {} redirecting to Leader {}", self.node_id, leader);
-                            let _ = RaftCluster::client_channel_sender(leader as usize - 1)
-                                .try_send(ClientRequest::Write {
-                                    payload,
-                                    response_tx,
-                                });
+                            info!(
+                                "Node {} not leader, suggesting Leader {}",
+                                self.node_id, leader
+                            );
+                            let _ = response_tx
+                                .try_send(Err(ClusterError::NotLeader { hint: Some(leader) }));
                         } else {
-                            let _ = response_tx.try_send(Err(ClusterError::NoLeader));
+                            let _ =
+                                response_tx.try_send(Err(ClusterError::NotLeader { hint: None }));
                         }
                     }
                 }
@@ -236,14 +237,15 @@ impl<
                     }
                     Err(ReadError::NotLeaderOrNoLease { leader_hint }) => {
                         if let Some(leader) = leader_hint {
-                            if leader != self.node_id {
-                                let _ = RaftCluster::client_channel_sender(leader as usize - 1)
-                                    .try_send(ClientRequest::Read { key, response_tx });
-                            } else {
-                                let _ = response_tx.try_send(Err(ClusterError::NoLeader));
-                            }
+                            info!(
+                                "Node {} cannot serve read, suggesting Leader {}",
+                                self.node_id, leader
+                            );
+                            let _ = response_tx
+                                .try_send(Err(ClusterError::NotLeader { hint: Some(leader) }));
                         } else {
-                            let _ = response_tx.try_send(Err(ClusterError::NoLeader));
+                            let _ =
+                                response_tx.try_send(Err(ClusterError::NotLeader { hint: None }));
                         }
                     }
                 }
