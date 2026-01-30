@@ -41,6 +41,7 @@ where
     pub id: &'a NodeId,
     pub role: &'a mut NodeState,
     pub current_term: &'a mut Term,
+    pub current_leader: &'a mut Option<NodeId>,
     pub transport: &'a mut T,
     pub storage: &'a mut S,
     pub state_machine: &'a mut SM,

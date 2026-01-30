@@ -127,6 +127,9 @@ pub fn step_down<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
         old_role,
     );
 
+    // Clear current leader when stepping down
+    *ctx.current_leader = None;
+
     // Revoke leader lease when stepping down
     ctx.leader_lease.revoke();
 }

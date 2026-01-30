@@ -32,13 +32,13 @@ type PhantomData<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK> =
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientError {
-    NotLeader,
+    NotLeader { leader_hint: Option<NodeId> },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadError {
     /// Node is not the leader or does not have a valid lease
-    NotLeaderOrNoLease,
+    NotLeaderOrNoLease { leader_hint: Option<NodeId> },
 }
 
 /// MessageHandler handles all Raft message processing.

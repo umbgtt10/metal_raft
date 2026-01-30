@@ -49,6 +49,9 @@ pub fn handle_append_entries<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
 
     common::reset_election_timer_if_valid_term(ctx, term);
 
+    // Track the leader - the sender of valid AppendEntries is the leader
+    *ctx.current_leader = Some(from);
+
     let (response, config_changes) = ctx.replication.handle_append_entries(
         term,
         prev_log_index,

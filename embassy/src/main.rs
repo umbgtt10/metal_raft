@@ -50,20 +50,10 @@ async fn main(spawner: Spawner) {
     let cluster =
         configurations::setup::initialize_cluster(spawner, cancel.clone(), observer_level).await;
 
-    info!("All nodes started. Waiting for leader election...");
+    info!("All nodes started.");
 
-    // Wait for consensus (leader election)
-    match cluster
-        .wait_for_leader(embassy_time::Duration::from_secs(10))
-        .await
-    {
-        Ok(leader_id) => {
-            info!("Consensus achieved! Leader elected: Node {}", leader_id);
-        }
-        Err(_) => {
-            panic!("Leader election timed out!");
-        }
-    }
+    info!("Waiting for leader election...");
+    embassy_time::Timer::after(Duration::from_secs(5)).await;
 
     // Submit test commands
     info!("Submitting test commands...");

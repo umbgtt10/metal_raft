@@ -13,7 +13,13 @@ use raft_core::{
         map_collection::MapCollection, node_collection::NodeCollection,
     },
     components::{
-        config_change_manager::ConfigChangeManager, election_manager::ElectionManager, leader_lease::LeaderLease, log_replication_manager::LogReplicationManager, message_handler::{ClientError, MessageHandler}, message_handler_context::MessageHandlerContext, snapshot_manager::SnapshotManager
+        config_change_manager::ConfigChangeManager,
+        election_manager::ElectionManager,
+        leader_lease::LeaderLease,
+        log_replication_manager::LogReplicationManager,
+        message_handler::{ClientError, MessageHandler},
+        message_handler_context::MessageHandlerContext,
+        snapshot_manager::SnapshotManager,
     },
     log_entry::{ConfigurationChange, EntryType, LogEntry},
     node_state::NodeState,
@@ -65,6 +71,7 @@ fn create_context<'a>(
     node_id: &'a u64,
     role: &'a mut NodeState,
     current_term: &'a mut u64,
+    current_leader: &'a mut Option<u64>,
     transport: &'a mut InMemoryTransport,
     storage: &'a mut InMemoryStorage,
     state_machine: &'a mut InMemoryStateMachine,
@@ -93,6 +100,7 @@ fn create_context<'a>(
         id: node_id,
         role,
         current_term,
+        current_leader,
         transport,
         storage,
         state_machine,
@@ -111,6 +119,7 @@ fn test_message_handler_start_election() {
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 5;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -128,6 +137,7 @@ fn test_message_handler_start_election() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -152,6 +162,7 @@ fn test_message_handler_start_pre_vote() {
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 5;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -169,6 +180,7 @@ fn test_message_handler_start_pre_vote() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -193,6 +205,7 @@ fn test_message_handler_reuse_across_operations() {
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 5;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -208,6 +221,7 @@ fn test_message_handler_reuse_across_operations() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -227,6 +241,7 @@ fn test_message_handler_reuse_across_operations() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -248,6 +263,7 @@ fn test_message_handler_handle_election_timer_as_follower() {
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 5;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -263,6 +279,7 @@ fn test_message_handler_handle_election_timer_as_follower() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -289,6 +306,7 @@ fn test_message_handler_handle_election_timer_as_leader() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 5;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -304,6 +322,7 @@ fn test_message_handler_handle_election_timer_as_leader() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -327,6 +346,7 @@ fn test_message_handler_handle_election_timer_as_candidate() {
     let node_id = 1;
     let mut role = NodeState::Candidate;
     let mut current_term = 5;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker.clone());
     let mut storage = InMemoryStorage::new();
@@ -350,6 +370,7 @@ fn test_message_handler_handle_election_timer_as_candidate() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -378,6 +399,7 @@ fn test_message_handler_handle_heartbeat_timer_as_leader() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 5;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker.clone());
     let mut storage = InMemoryStorage::new();
@@ -403,6 +425,7 @@ fn test_message_handler_handle_heartbeat_timer_as_leader() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -427,6 +450,7 @@ fn test_message_handler_submit_client_command_as_follower_fails() {
     let node_id = 2;
     let mut role = NodeState::Follower;
     let mut current_term = 1;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -442,6 +466,7 @@ fn test_message_handler_submit_client_command_as_follower_fails() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -454,7 +479,7 @@ fn test_message_handler_submit_client_command_as_follower_fails() {
     );
 
     let result = handler.submit_client_command(&mut ctx, "test_command".to_string());
-    assert_eq!(result, Err(ClientError::NotLeader));
+    assert_eq!(result, Err(ClientError::NotLeader { leader_hint: None }));
 }
 
 #[test]
@@ -462,6 +487,7 @@ fn test_message_handler_submit_config_change_as_follower_fails() {
     let node_id = 2;
     let mut role = NodeState::Follower;
     let mut current_term = 1;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -477,6 +503,7 @@ fn test_message_handler_submit_config_change_as_follower_fails() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -489,7 +516,7 @@ fn test_message_handler_submit_config_change_as_follower_fails() {
     );
 
     let result = handler.submit_config_change(&mut ctx, ConfigurationChange::AddServer(4));
-    assert_eq!(result, Err(ClientError::NotLeader));
+    assert_eq!(result, Err(ClientError::NotLeader { leader_hint: None }));
 }
 
 #[test]
@@ -497,6 +524,7 @@ fn test_message_handler_handles_higher_term_message() {
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 1;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -513,6 +541,7 @@ fn test_message_handler_handles_higher_term_message() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -543,6 +572,7 @@ fn test_message_handler_handles_pre_vote_request() {
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker.clone());
     let mut storage = InMemoryStorage::new();
@@ -559,6 +589,7 @@ fn test_message_handler_handles_pre_vote_request() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -589,6 +620,7 @@ fn test_message_handler_handles_vote_request() {
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker.clone());
     let mut storage = InMemoryStorage::new();
@@ -605,6 +637,7 @@ fn test_message_handler_handles_vote_request() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -634,6 +667,7 @@ fn test_message_handler_handles_append_entries_success() {
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker.clone());
     let mut storage = InMemoryStorage::new();
@@ -650,6 +684,7 @@ fn test_message_handler_handles_append_entries_success() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -681,6 +716,7 @@ fn test_message_handler_broadcast_to_peers() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 5;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker.clone());
     let mut storage = InMemoryStorage::new();
@@ -704,6 +740,7 @@ fn test_message_handler_broadcast_to_peers() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -729,6 +766,7 @@ fn test_message_handler_send_append_entries_to_followers() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 5;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker.clone());
     let mut storage = InMemoryStorage::new();
@@ -754,6 +792,7 @@ fn test_message_handler_send_append_entries_to_followers() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -777,6 +816,7 @@ fn test_message_handler_handles_vote_response_updates_election_state() {
     let node_id = 1;
     let mut role = NodeState::Candidate;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -809,6 +849,7 @@ fn test_message_handler_handles_vote_response_updates_election_state() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -838,6 +879,7 @@ fn test_message_handler_handles_install_snapshot_message() {
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker.clone());
     let mut storage = InMemoryStorage::new();
@@ -854,6 +896,7 @@ fn test_message_handler_handles_install_snapshot_message() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -887,6 +930,7 @@ fn test_message_handler_handles_install_snapshot_response() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -912,6 +956,7 @@ fn test_message_handler_handles_install_snapshot_response() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -939,6 +984,7 @@ fn test_message_handler_submit_client_command_as_leader_succeeds() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -964,6 +1010,7 @@ fn test_message_handler_submit_client_command_as_leader_succeeds() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -986,6 +1033,7 @@ fn test_message_handler_submit_config_change_as_leader_succeeds() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -1010,6 +1058,7 @@ fn test_message_handler_submit_config_change_as_leader_succeeds() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -1033,6 +1082,7 @@ fn test_message_handler_handles_append_entries_response() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -1058,6 +1108,7 @@ fn test_message_handler_handles_append_entries_response() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -1086,6 +1137,7 @@ fn test_message_handler_ignores_stale_append_entries_response() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 3;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -1114,6 +1166,7 @@ fn test_message_handler_ignores_stale_append_entries_response() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -1145,6 +1198,7 @@ fn test_message_handler_grants_lease_on_commit_advance() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -1179,6 +1233,7 @@ fn test_message_handler_grants_lease_on_commit_advance() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -1214,6 +1269,7 @@ fn test_message_handler_revokes_lease_on_step_down() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -1240,6 +1296,7 @@ fn test_message_handler_revokes_lease_on_step_down() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -1279,6 +1336,7 @@ fn test_message_handler_does_not_grant_lease_for_non_leader() {
     let node_id = 1;
     let mut role = NodeState::Follower; // Not a leader
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -1305,6 +1363,7 @@ fn test_message_handler_does_not_grant_lease_for_non_leader() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -1337,6 +1396,7 @@ fn test_message_handler_does_not_grant_lease_for_stale_term() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 3; // Higher term than the response
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -1363,6 +1423,7 @@ fn test_message_handler_does_not_grant_lease_for_stale_term() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,
@@ -1395,6 +1456,7 @@ fn test_message_handler_lease_remains_valid_across_multiple_commits() {
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
+    let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
     let mut storage = InMemoryStorage::new();
@@ -1436,6 +1498,7 @@ fn test_message_handler_lease_remains_valid_across_multiple_commits() {
         &node_id,
         &mut role,
         &mut current_term,
+        &mut current_leader,
         &mut transport,
         &mut storage,
         &mut state_machine,

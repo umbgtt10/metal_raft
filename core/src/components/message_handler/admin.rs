@@ -117,7 +117,9 @@ where
     CLK: Clock,
 {
     if *ctx.role != NodeState::Leader {
-        return Err(ClientError::NotLeader);
+        return Err(ClientError::NotLeader {
+            leader_hint: *ctx.current_leader,
+        });
     }
 
     let entry = LogEntry {
@@ -165,7 +167,9 @@ where
     CLK: Clock,
 {
     if *ctx.role != NodeState::Leader {
-        return Err(ClientError::NotLeader);
+        return Err(ClientError::NotLeader {
+            leader_hint: *ctx.current_leader,
+        });
     }
 
     let entry = LogEntry {

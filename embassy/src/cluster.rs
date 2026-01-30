@@ -8,7 +8,6 @@ use crate::cancellation_token::CancellationToken;
 use alloc::string::String;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
-use embassy_sync::mutex::Mutex;
 use embassy_time::Duration;
 use raft_core::types::NodeId;
 
@@ -32,8 +31,6 @@ static CLIENT_READ_RESPONSE_CHANNEL: Channel<
     Result<Option<String>, ClusterError>,
     1,
 > = Channel::new();
-
-static CURRENT_LEADER: Mutex<CriticalSectionRawMutex, Option<NodeId>> = Mutex::new(None);
 
 /// Client request to Raft cluster
 #[derive(Clone)]
@@ -69,9 +66,6 @@ pub struct RaftCluster {
     /// Client channels (one per node for requests)
     client_channels: [Sender<'static, CriticalSectionRawMutex, ClientRequest, 4>; 5],
 
-    /// Leader tracking (updated by nodes via observer)
-    current_leader: &'static Mutex<CriticalSectionRawMutex, Option<NodeId>>,
-
     /// For graceful shutdown
     cancel: CancellationToken,
 }
@@ -92,12 +86,6 @@ impl RaftCluster {
         CLIENT_CHANNELS[index].sender()
     }
 
-    /// Get current leader mutex (internal use)
-    pub(crate) fn current_leader_mutex() -> &'static Mutex<CriticalSectionRawMutex, Option<NodeId>>
-    {
-        &CURRENT_LEADER
-    }
-
     /// Create new cluster handle from shared statics
     pub fn new(cancel: CancellationToken) -> Self {
         Self {
@@ -108,7 +96,6 @@ impl RaftCluster {
                 Self::client_channel_sender(3),
                 Self::client_channel_sender(4),
             ],
-            current_leader: Self::current_leader_mutex(),
             cancel,
         }
     }
@@ -185,23 +172,6 @@ impl RaftCluster {
         {
             Ok(result) => result,
             Err(_) => Err(ClusterError::Timeout),
-        }
-    }
-
-    /// Wait for a leader to be elected
-    pub async fn wait_for_leader(&self, timeout: Duration) -> Result<NodeId, ClusterError> {
-        let start = embassy_time::Instant::now();
-
-        loop {
-            if let Some(leader) = *self.current_leader.lock().await {
-                return Ok(leader);
-            }
-
-            if embassy_time::Instant::now() - start > timeout {
-                return Err(ClusterError::Timeout);
-            }
-
-            embassy_time::Timer::after(Duration::from_millis(10)).await;
         }
     }
 

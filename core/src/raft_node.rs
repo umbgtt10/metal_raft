@@ -46,6 +46,7 @@ where
     id: NodeId,
     role: NodeState,
     current_term: Term,
+    current_leader: Option<NodeId>,
     transport: T,
     storage: S,
     state_machine: SM,
@@ -132,6 +133,7 @@ where
             id,
             role: NodeState::Follower,
             current_term,
+            current_leader: None,
             transport,
             storage,
             state_machine,
@@ -195,7 +197,9 @@ where
 
     pub fn read_linearizable(&mut self, key: &str) -> Result<Option<&str>, ReadError> {
         if !matches!(self.role, NodeState::Leader) || !self.leader_lease.is_valid() {
-            return Err(ReadError::NotLeaderOrNoLease);
+            return Err(ReadError::NotLeaderOrNoLease {
+                leader_hint: self.current_leader,
+            });
         }
 
         let value = self.state_machine.get(key);
@@ -245,6 +249,7 @@ where
             id: &self.id,
             role: &mut self.role,
             current_term: &mut self.current_term,
+            current_leader: &mut self.current_leader,
             transport: &mut self.transport,
             storage: &mut self.storage,
             state_machine: &mut self.state_machine,

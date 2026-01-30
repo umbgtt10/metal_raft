@@ -212,10 +212,8 @@ impl<
                     Ok(index) => {
                         self.pending_commands.insert(index, response_tx);
                     }
-                    Err(ClientError::NotLeader) => {
-                        let leader_id = *RaftCluster::current_leader_mutex().lock().await;
-
-                        if let Some(leader) = leader_id {
+                    Err(ClientError::NotLeader { leader_hint }) => {
+                        if let Some(leader) = leader_hint {
                             info!("Node {} redirecting to Leader {}", self.node_id, leader);
                             let _ = RaftCluster::client_channel_sender(leader as usize - 1)
                                 .try_send(ClientRequest::Write {
@@ -236,17 +234,11 @@ impl<
                     Ok(None) => {
                         let _ = response_tx.try_send(Ok(None));
                     }
-                    Err(ReadError::NotLeaderOrNoLease) => {
-                        let leader_id = *RaftCluster::current_leader_mutex()
-                            .lock()
-                            .await;
-
-                        if let Some(leader) = leader_id {
+                    Err(ReadError::NotLeaderOrNoLease { leader_hint }) => {
+                        if let Some(leader) = leader_hint {
                             if leader != self.node_id {
-                                let _ = RaftCluster::client_channel_sender(
-                                    leader as usize - 1,
-                                )
-                                .try_send(ClientRequest::Read { key, response_tx });
+                                let _ = RaftCluster::client_channel_sender(leader as usize - 1)
+                                    .try_send(ClientRequest::Read { key, response_tx });
                             } else {
                                 let _ = response_tx.try_send(Err(ClusterError::NoLeader));
                             }
