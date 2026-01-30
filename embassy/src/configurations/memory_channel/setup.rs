@@ -3,38 +3,42 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::cancellation_token::CancellationToken;
-use crate::client::RaftClient;
+use crate::client_channel_hub::ClientChannelHub;
 use crate::configurations::storage::in_memory::InMemoryStorage;
 use crate::configurations::transport::channel::transport::ChannelTransportHub;
 use crate::configurations::transport::channel::ChannelTransport;
 use crate::embassy_node::EmbassyNode;
 use crate::info;
+use crate::raft_client::RaftClient;
 use embassy_executor::Spawner;
 use raft_core::observer::EventLevel;
 
 // --- In-Memory Channel Initialization ---
 
 pub async fn initialize_cluster(
+    client_hub: &ClientChannelHub,
     spawner: Spawner,
     cancel: CancellationToken,
     observer_level: EventLevel,
 ) -> RaftClient {
     info!("Using Channel transport (In-Memory)");
 
-    // Get the singleton hub
-    let hub = ChannelTransportHub::new();
+    // Create transport hub
+    let transport_hub = ChannelTransportHub::new();
 
     for node_id in 1..=5 {
         let node_id_u64 = node_id as u64;
 
         // Create transport for this node from the hub
-        let transport = hub.create_transport(node_id_u64);
+        let transport = transport_hub.create_transport(node_id_u64);
 
         // Create storage for this node
         let storage = InMemoryStorage::new();
 
+        // Get client channel receiver for this node
+        let client_rx = client_hub.get_receiver(node_id_u64);
+
         // Create the node
-        let client_rx = RaftClient::client_channel_receiver(node_id);
         let node = EmbassyNode::new(node_id_u64, storage, transport, client_rx, observer_level);
 
         // Spawn Node Task
@@ -44,7 +48,7 @@ pub async fn initialize_cluster(
     }
 
     // Return cluster handle for client interaction
-    RaftClient::new(cancel)
+    RaftClient::new(client_hub.get_all_senders(), cancel)
 }
 
 // Channel Raft Wrapper

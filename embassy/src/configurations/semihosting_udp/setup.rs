@@ -3,7 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::cancellation_token::CancellationToken;
-use crate::raft_client::RaftClient;
+use crate::client_channel_hub::ClientChannelHub;
 use crate::configurations::storage::semihosting::SemihostingStorage;
 use crate::configurations::transport::udp::config::{self, get_node_config};
 use crate::configurations::transport::udp::driver::{MockNetDriver, NetworkBus};
@@ -12,11 +12,13 @@ use crate::configurations::transport::udp::transport::{
 };
 use crate::embassy_node::EmbassyNode;
 use crate::info;
+use crate::raft_client::RaftClient;
 use alloc::vec::Vec;
 use embassy_executor::Spawner;
 use raft_core::observer::EventLevel;
 
 pub async fn initialize_cluster(
+    client_hub: &ClientChannelHub,
     spawner: Spawner,
     cancel: CancellationToken,
     observer_level: EventLevel,
@@ -108,16 +110,10 @@ pub async fn initialize_cluster(
             .spawn(udp_sender_task(node_id_u64, *stack, outbox_receiver))
             .unwrap();
 
-        let transport_impl = UdpTransport::new(node_id_u64, outbox_sender, inbox_receiver);
+        let transport = UdpTransport::new(node_id_u64, outbox_sender, inbox_receiver);
         let storage = SemihostingStorage::new(node_id_u64);
-        let client_rx = RaftClient::client_channel_receiver(node_id as u64);
-        let node = EmbassyNode::new(
-            node_id_u64,
-            storage,
-            transport_impl,
-            client_rx,
-            observer_level,
-        );
+        let client_rx = client_hub.get_receiver(node_id_u64);
+        let node = EmbassyNode::new(node_id_u64, storage, transport, client_rx, observer_level);
 
         spawner
             .spawn(udp_raft_node_task(node, cancel.clone()))
@@ -128,7 +124,7 @@ pub async fn initialize_cluster(
 
     info!("All UDP nodes started!");
 
-    RaftClient::new(cancel)
+    RaftClient::new(client_hub.get_all_senders(), cancel)
 }
 
 #[embassy_executor::task(pool_size = 5)]

@@ -14,7 +14,7 @@ use panic_semihosting as _;
 #[macro_use]
 pub mod logging;
 pub mod cancellation_token;
-pub mod raft_client;
+pub mod client_channel_hub;
 pub mod collections;
 pub mod config;
 pub mod configurations;
@@ -25,9 +25,11 @@ pub mod embassy_storage;
 pub mod embassy_timer;
 pub mod heap;
 pub mod led_state;
+pub mod raft_client;
 pub mod time_driver;
 
 use cancellation_token::CancellationToken;
+use client_channel_hub::ClientChannelHub;
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -46,9 +48,17 @@ async fn main(spawner: Spawner) {
     let observer_level = config::get_observer_level();
     info!("Observer level: {:?}", observer_level);
 
+    // Create client channel hub for client-to-node communication
+    let client_hub = ClientChannelHub::new();
+
     // Initialize client (handles communication with Raft cluster)
-    let client =
-        configurations::setup::initialize_cluster(spawner, cancel.clone(), observer_level).await;
+    let client = configurations::setup::initialize_cluster(
+        &client_hub,
+        spawner,
+        cancel.clone(),
+        observer_level,
+    )
+    .await;
 
     info!("All nodes started.");
 

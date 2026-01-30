@@ -5,21 +5,14 @@
 //! Raft client for interacting with a Raft cluster
 
 use crate::cancellation_token::CancellationToken;
+use crate::client_channel_hub::ClientSender;
 use alloc::string::String;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
 use embassy_time::Duration;
 use raft_core::types::NodeId;
 
-// Private cluster state - not directly accessible outside this module
-static CLIENT_CHANNELS: [Channel<CriticalSectionRawMutex, ClientRequest, 4>; 5] = [
-    Channel::new(),
-    Channel::new(),
-    Channel::new(),
-    Channel::new(),
-    Channel::new(),
-];
-
+// Response channels for client requests
 static CLIENT_WRITE_RESPONSE_CHANNEL: Channel<
     CriticalSectionRawMutex,
     Result<(), ClusterError>,
@@ -64,38 +57,17 @@ pub enum ClusterError {
 /// Client handle for interacting with a Raft cluster
 pub struct RaftClient {
     /// Client channels (one per node for requests)
-    client_channels: [Sender<'static, CriticalSectionRawMutex, ClientRequest, 4>; 5],
+    client_channels: [ClientSender; 5],
 
     /// For graceful shutdown
     cancel: CancellationToken,
 }
 
 impl RaftClient {
-    /// Get client channel receiver for a specific node (internal use)
-    pub(crate) fn client_channel_receiver(
-        node_id: NodeId,
-    ) -> embassy_sync::channel::Receiver<'static, CriticalSectionRawMutex, ClientRequest, 4> {
-        let index = (node_id - 1) as usize;
-        CLIENT_CHANNELS[index].receiver()
-    }
-
-    /// Get client channel sender by index (internal use)
-    pub(crate) fn client_channel_sender(
-        index: usize,
-    ) -> embassy_sync::channel::Sender<'static, CriticalSectionRawMutex, ClientRequest, 4> {
-        CLIENT_CHANNELS[index].sender()
-    }
-
-    /// Create new cluster handle from shared statics
-    pub fn new(cancel: CancellationToken) -> Self {
+    /// Create new cluster handle with provided channel senders
+    pub fn new(client_channels: [ClientSender; 5], cancel: CancellationToken) -> Self {
         Self {
-            client_channels: [
-                Self::client_channel_sender(0),
-                Self::client_channel_sender(1),
-                Self::client_channel_sender(2),
-                Self::client_channel_sender(3),
-                Self::client_channel_sender(4),
-            ],
+            client_channels,
             cancel,
         }
     }
