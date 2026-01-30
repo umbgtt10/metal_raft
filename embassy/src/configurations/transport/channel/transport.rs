@@ -11,7 +11,6 @@ use embassy_sync::channel::{Channel, Receiver, Sender};
 use raft_core::raft_messages::RaftMsg;
 use raft_core::types::NodeId;
 
-/// Message envelope with sender info
 #[derive(Debug, Clone)]
 pub struct Envelope {
     pub from: NodeId,
@@ -21,15 +20,12 @@ pub struct Envelope {
 
 const CHANNEL_SIZE: usize = 32;
 
-/// Hub that manages all inter-node channels
 pub struct ChannelTransportHub {
-    // One channel per node (5 nodes)
     channels: [Channel<CriticalSectionRawMutex, Envelope, CHANNEL_SIZE>; 5],
 }
 
 impl ChannelTransportHub {
     pub fn new() -> &'static Self {
-        // Allocate hub statically (required for embassy channels)
         static HUB: ChannelTransportHub = ChannelTransportHub {
             channels: [
                 Channel::new(),
@@ -66,7 +62,6 @@ impl ChannelTransportHub {
     }
 }
 
-/// Channel-based transport for a single node
 pub struct ChannelTransport {
     node_id: NodeId,
     rx: Receiver<'static, CriticalSectionRawMutex, Envelope, CHANNEL_SIZE>,
@@ -74,13 +69,11 @@ pub struct ChannelTransport {
 }
 
 impl ChannelTransport {
-    /// Send a message to a peer
     pub async fn send(
         &self,
         to: NodeId,
         message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
     ) {
-        // Bounds check for node IDs (1-5)
         if to == 0 || to > 5 {
             info!("Invalid target node: {}, ignoring message", to);
             return;
@@ -96,7 +89,6 @@ impl ChannelTransport {
         sender.send(envelope).await;
     }
 
-    /// Receive a message from any peer
     pub async fn recv(
         &mut self,
     ) -> (
@@ -107,7 +99,6 @@ impl ChannelTransport {
         (envelope.from, envelope.message)
     }
 
-    /// Broadcast a message to all peers
     pub async fn broadcast(
         &self,
         message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
@@ -120,7 +111,6 @@ impl ChannelTransport {
     }
 }
 
-// Implement AsyncTransport trait for ChannelTransport
 impl AsyncTransport for ChannelTransport {
     async fn send(
         &mut self,

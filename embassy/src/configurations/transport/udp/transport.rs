@@ -17,6 +17,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Receiver, Sender};
 use raft_core::raft_messages::RaftMsg;
 use raft_core::types::NodeId;
+use serde::{Deserialize, Serialize};
 
 const BASE_PORT: u16 = 9000;
 const MAX_PACKET_SIZE: usize = 4096;
@@ -49,16 +50,13 @@ pub type RaftSender = Sender<
     CHANNEL_SIZE,
 >;
 
-/// Message envelope for serialization
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Envelope {
     from: NodeId,
     to: NodeId,
-    // Store serialized RaftMsg bytes
     message_bytes: Vec<u8>,
 }
 
-/// UDP transport using embassy-net
 pub struct UdpTransport {
     node_id: NodeId,
     sender: RaftSender,
@@ -81,7 +79,6 @@ impl AsyncTransport for UdpTransport {
         to: NodeId,
         message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
     ) {
-        // Send to the sender task via channel
         if self.sender.try_send((to, message)).is_err() {
             info!("Node {} outgoing packet dropped (queue full)", self.node_id);
         }
@@ -93,7 +90,6 @@ impl AsyncTransport for UdpTransport {
         NodeId,
         RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
     ) {
-        // Simply read from the channel (listener task handles the socket)
         self.receiver.receive().await
     }
 
@@ -109,11 +105,10 @@ impl AsyncTransport for UdpTransport {
     }
 }
 
-/// Continuous UDP sender task
 pub async fn run_udp_sender(
     node_id: NodeId,
     stack: embassy_net::Stack<'static>,
-    receiver: RaftReceiver, // Receives messages to send
+    receiver: RaftReceiver,
 ) {
     let mut rx_meta = [PacketMetadata::EMPTY; 8];
     let mut tx_meta = [PacketMetadata::EMPTY; 8];
@@ -128,13 +123,11 @@ pub async fn run_udp_sender(
         &mut tx_buffer,
     );
 
-    // Bind to ephemeral port (0) for sending
     if let Err(e) = socket.bind(0) {
         info!("Node {} failed to bind UDP sender: {:?}", node_id, e);
         return;
     }
 
-    // Compute peer addresses
     let peer_addrs = [
         IpEndpoint::new(Ipv4Address::new(10, 0, 0, 1).into(), BASE_PORT + 1),
         IpEndpoint::new(Ipv4Address::new(10, 0, 0, 2).into(), BASE_PORT + 2),
@@ -148,10 +141,8 @@ pub async fn run_udp_sender(
     loop {
         let (to, message) = receiver.receive().await;
 
-        // Convert RaftMsg to wire format
         let wire_msg = WireRaftMsg::from(message);
 
-        // Serialize the wire message
         let message_bytes = match postcard::to_allocvec(&wire_msg) {
             Ok(bytes) => bytes,
             Err(_) => {
@@ -166,7 +157,6 @@ pub async fn run_udp_sender(
             message_bytes,
         };
 
-        // Serialize the envelope
         let bytes = match postcard::to_allocvec(&envelope) {
             Ok(bytes) => bytes,
             Err(_) => {
@@ -183,7 +173,6 @@ pub async fn run_udp_sender(
     }
 }
 
-/// Continuous UDP listener task
 pub async fn run_udp_listener(
     node_id: NodeId,
     stack: embassy_net::Stack<'static>,
@@ -215,7 +204,6 @@ pub async fn run_udp_listener(
 
         match socket.recv_from(&mut buf).await {
             Ok((len, _from_addr)) => {
-                // Deserialize envelope
                 let envelope: Envelope = match postcard::from_bytes(&buf[..len]) {
                     Ok(env) => env,
                     Err(e) => {
@@ -224,7 +212,6 @@ pub async fn run_udp_listener(
                     }
                 };
 
-                // Deserialize wire message
                 let wire_msg: WireRaftMsg = match postcard::from_bytes(&envelope.message_bytes) {
                     Ok(msg) => msg,
                     Err(e) => {
@@ -236,7 +223,6 @@ pub async fn run_udp_listener(
                     }
                 };
 
-                // Convert to RaftMsg
                 let message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>> =
                     match wire_msg.try_into() {
                         Ok(msg) => msg,
@@ -246,7 +232,6 @@ pub async fn run_udp_listener(
                         }
                     };
 
-                // Push to channel (drop if full)
                 if sender.try_send((envelope.from, message)).is_err() {
                     info!("Node {} incoming packet dropped (channel full)", node_id);
                 }

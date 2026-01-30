@@ -2,18 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-//! Persistent storage using semihosting file I/O
-//!
-//! This storage implementation persists Raft state to files on the host filesystem
-//! via QEMU semihosting. This provides realistic persistence behavior for development
-//! and testing without requiring actual flash hardware emulation.
-//!
-//! File layout per node:
-//! - `raft_node_{id}_metadata.bin` - Contains current_term and voted_for
-//! - `raft_node_{id}_log.bin` - Append-only log entries
-//! - `raft_node_{id}_snapshot.bin` - Latest snapshot data
-//! - `raft_node_{id}_snapshot_meta.bin` - Snapshot metadata
-
 use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
 use crate::embassy_state_machine::EmbassySnapshotData;
@@ -21,11 +9,15 @@ use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec as AllocVec;
 use core::fmt::Write;
+use cortex_m_semihosting::hio;
 use heapless::Vec;
 use raft_core::{
     collections::{chunk_collection::ChunkCollection, log_entry_collection::LogEntryCollection},
     log_entry::{EntryType, LogEntry},
-    snapshot::{SnapshotBuilder, SnapshotData},
+    snapshot::{
+        Snapshot, SnapshotBuildError, SnapshotBuilder, SnapshotChunk, SnapshotData, SnapshotError,
+        SnapshotMetadata,
+    },
     storage::Storage,
     types::{LogIndex, NodeId, Term},
 };
@@ -36,7 +28,7 @@ pub struct SemihostingStorage {
     current_term: Term,
     voted_for: Option<NodeId>,
     log: AllocVec<LogEntry<String>>,
-    snapshot: Option<raft_core::snapshot::Snapshot<EmbassySnapshotData>>,
+    snapshot: Option<Snapshot<EmbassySnapshotData>>,
     first_log_index: LogIndex,
 }
 
@@ -51,7 +43,6 @@ impl SemihostingStorage {
             first_log_index: 1,
         };
 
-        // Try to load existing state from disk
         storage.load_from_disk();
         storage
     }
@@ -72,9 +63,7 @@ impl SemihostingStorage {
         format!("persistency/raft_node_{}_snapshot_meta.bin\0", self.node_id).into_bytes()
     }
 
-    /// Load state from disk on startup
     fn load_from_disk(&mut self) {
-        // Load metadata (term and voted_for)
         if let Ok(data) = self.read_file(&self.metadata_path()) {
             if data.len() >= 17 {
                 self.current_term = u64::from_le_bytes([
@@ -91,12 +80,10 @@ impl SemihostingStorage {
             }
         }
 
-        // Load log entries
         if let Ok(data) = self.read_file(&self.log_path()) {
             self.log = self.deserialize_log(&data);
         }
 
-        // Load snapshot metadata
         if let Ok(meta_data) = self.read_file(&self.snapshot_meta_path()) {
             if meta_data.len() >= 16 {
                 let last_included_index = u64::from_le_bytes([
@@ -120,7 +107,6 @@ impl SemihostingStorage {
                     meta_data[15],
                 ]);
 
-                // Load snapshot data
                 if let Ok(snapshot_data) = self.read_file(&self.snapshot_path()) {
                     let mut data = Vec::new();
                     for byte in snapshot_data.iter().take(512) {
@@ -129,8 +115,8 @@ impl SemihostingStorage {
                         }
                     }
 
-                    self.snapshot = Some(raft_core::snapshot::Snapshot {
-                        metadata: raft_core::snapshot::SnapshotMetadata {
+                    self.snapshot = Some(Snapshot {
+                        metadata: SnapshotMetadata {
                             last_included_index,
                             last_included_term,
                         },
@@ -143,67 +129,56 @@ impl SemihostingStorage {
         }
     }
 
-    /// Persist metadata (term and voted_for) to disk
     fn persist_metadata(&self) {
         let mut data = AllocVec::new();
 
-        // Write current_term (8 bytes)
         data.extend_from_slice(&self.current_term.to_le_bytes());
 
-        // Write voted_for (1 byte flag + 8 bytes value)
         if let Some(vote) = self.voted_for {
-            data.push(1); // has_vote flag
+            data.push(1);
             data.extend_from_slice(&vote.to_le_bytes());
         } else {
-            data.push(0); // no vote
-            data.extend_from_slice(&[0u8; 8]); // padding
+            data.push(0);
+            data.extend_from_slice(&[0u8; 8]);
         }
 
         let _ = self.write_file(&self.metadata_path(), &data);
     }
 
-    /// Persist log entries to disk
     fn persist_log(&self) {
         let data = self.serialize_log(&self.log);
         let _ = self.write_file(&self.log_path(), &data);
     }
 
-    /// Persist snapshot to disk
     fn persist_snapshot(&self) {
         if let Some(snapshot) = &self.snapshot {
-            // Write snapshot metadata
             let mut meta_data = AllocVec::new();
             meta_data.extend_from_slice(&snapshot.metadata.last_included_index.to_le_bytes());
             meta_data.extend_from_slice(&snapshot.metadata.last_included_term.to_le_bytes());
             let _ = self.write_file(&self.snapshot_meta_path(), &meta_data);
 
-            // Write snapshot data
             let _ = self.write_file(&self.snapshot_path(), snapshot.data.data.as_slice());
         }
     }
 
-    /// Serialize log entries to bytes
     fn serialize_log(&self, log: &[LogEntry<String>]) -> AllocVec<u8> {
         let mut data = AllocVec::new();
 
-        // Write number of entries
         data.extend_from_slice(&(log.len() as u64).to_le_bytes());
 
         for entry in log {
-            // Write term (8 bytes)
             data.extend_from_slice(&entry.term.to_le_bytes());
 
-            // Write entry type and payload
             match &entry.entry_type {
                 EntryType::Command(payload) => {
-                    data.push(0); // Command type
+                    data.push(0);
                     let payload_bytes = payload.as_bytes();
                     data.extend_from_slice(&(payload_bytes.len() as u32).to_le_bytes());
                     data.extend_from_slice(payload_bytes);
                 }
                 EntryType::ConfigChange(_) => {
-                    data.push(1); // ConfigChange type (not fully implemented)
-                    data.extend_from_slice(&0u32.to_le_bytes()); // empty payload
+                    data.push(1);
+                    data.extend_from_slice(&0u32.to_le_bytes());
                 }
             }
         }
@@ -211,7 +186,6 @@ impl SemihostingStorage {
         data
     }
 
-    /// Deserialize log entries from bytes
     fn deserialize_log(&self, data: &[u8]) -> AllocVec<LogEntry<String>> {
         let mut log = AllocVec::new();
 
@@ -286,8 +260,6 @@ impl SemihostingStorage {
 
     /// Write data to file via semihosting using hio module
     fn write_file(&self, path: &[u8], data: &[u8]) -> Result<(), ()> {
-        use cortex_m_semihosting::hio;
-
         // Convert path to string for hio
         let path_str = core::str::from_utf8(path).map_err(|_| ())?;
 
@@ -301,12 +273,7 @@ impl SemihostingStorage {
             );
         }
 
-        // For cortex-m-semihosting 0.5, we need to use raw syscalls
-        // The hio module doesn't provide file operations, only stdout/stderr
-        // We'll use the syscall! macro which provides direct access to syscalls
-
         unsafe {
-            // SYS_OPEN (0x01): Open file
             let mode = 0x0000_0004 | 0x0000_0002; // MODE_WRITE | MODE_BINARY
             let fd = cortex_m_semihosting::syscall!(OPEN, path.as_ptr(), mode, path.len() - 1);
 
@@ -328,10 +295,7 @@ impl SemihostingStorage {
         }
     }
 
-    /// Read data from file via semihosting
     fn read_file(&self, path: &[u8]) -> Result<AllocVec<u8>, ()> {
-        use cortex_m_semihosting::hio;
-
         let path_str = core::str::from_utf8(path).map_err(|_| ())?;
 
         if let Ok(mut stdout) = hio::hstdout() {
@@ -374,12 +338,11 @@ impl SemihostingStorage {
     }
 }
 
-/// Snapshot builder for incremental snapshot reception
 pub struct EmbassySnapshotBuilder {
     data: Vec<u8, 512>,
 }
 
-impl raft_core::snapshot::SnapshotBuilder for EmbassySnapshotBuilder {
+impl SnapshotBuilder for EmbassySnapshotBuilder {
     type Output = EmbassySnapshotData;
     type ChunkInput = HeaplessChunkVec<512>;
 
@@ -391,12 +354,12 @@ impl raft_core::snapshot::SnapshotBuilder for EmbassySnapshotBuilder {
         &mut self,
         _offset: usize,
         chunk: Self::ChunkInput,
-    ) -> Result<(), raft_core::snapshot::SnapshotBuildError> {
+    ) -> Result<(), SnapshotBuildError> {
         // Append chunk data to our buffer
         for byte in chunk.as_slice() {
             self.data
                 .push(*byte)
-                .map_err(|_| raft_core::snapshot::SnapshotBuildError::OutOfBounds)?;
+                .map_err(|_| SnapshotBuildError::OutOfBounds)?;
         }
         Ok(())
     }
@@ -506,16 +469,16 @@ impl Storage for SemihostingStorage {
 
     // === Snapshot Methods ===
 
-    fn save_snapshot(&mut self, snapshot: raft_core::snapshot::Snapshot<Self::SnapshotData>) {
+    fn save_snapshot(&mut self, snapshot: Snapshot<Self::SnapshotData>) {
         self.snapshot = Some(snapshot);
         self.persist_snapshot(); // Persist after change
     }
 
-    fn load_snapshot(&self) -> Option<raft_core::snapshot::Snapshot<Self::SnapshotData>> {
+    fn load_snapshot(&self) -> Option<Snapshot<Self::SnapshotData>> {
         self.snapshot.clone()
     }
 
-    fn snapshot_metadata(&self) -> Option<raft_core::snapshot::SnapshotMetadata> {
+    fn snapshot_metadata(&self) -> Option<SnapshotMetadata> {
         self.snapshot.as_ref().map(|s| s.metadata.clone())
     }
 
@@ -523,13 +486,13 @@ impl Storage for SemihostingStorage {
         &self,
         offset: usize,
         max_size: usize,
-    ) -> Option<raft_core::snapshot::SnapshotChunk<Self::SnapshotData>> {
+    ) -> Option<SnapshotChunk<Self::SnapshotData>> {
         let snapshot = self.snapshot.as_ref()?;
         let chunk_data = snapshot.data.chunk_at(offset, max_size)?;
 
         let done = offset + chunk_data.len() >= snapshot.data.len();
 
-        Some(raft_core::snapshot::SnapshotChunk {
+        Some(SnapshotChunk {
             offset,
             data: chunk_data,
             done,
@@ -547,58 +510,49 @@ impl Storage for SemihostingStorage {
         done: bool,
         last_included_index: LogIndex,
         last_included_term: Term,
-    ) -> Result<(), raft_core::snapshot::SnapshotError> {
-        // For single-chunk transfers (embassy typical case)
+    ) -> Result<(), SnapshotError> {
         if offset == 0 && done {
-            // Convert HeaplessChunkVec to Vec<u8, 512>
             let mut data = Vec::new();
             for byte in chunk.as_slice() {
-                data.push(*byte)
-                    .map_err(|_| raft_core::snapshot::SnapshotError::CorruptData)?;
+                data.push(*byte).map_err(|_| SnapshotError::CorruptData)?;
             }
             let snapshot_data = EmbassySnapshotData { data };
-            let snapshot = raft_core::snapshot::Snapshot {
-                metadata: raft_core::snapshot::SnapshotMetadata {
+            let snapshot = Snapshot {
+                metadata: SnapshotMetadata {
                     last_included_index,
                     last_included_term,
                 },
                 data: snapshot_data,
             };
             self.snapshot = Some(snapshot);
-            self.persist_snapshot(); // Persist after change
+            self.persist_snapshot();
             Ok(())
         } else {
-            // Multi-chunk not supported in this simple implementation
-            Err(raft_core::snapshot::SnapshotError::CorruptData)
+            Err(SnapshotError::CorruptData)
         }
     }
 
     fn finalize_snapshot(
         &mut self,
         builder: Self::SnapshotBuilder,
-        metadata: raft_core::snapshot::SnapshotMetadata,
-    ) -> Result<(), raft_core::snapshot::SnapshotError> {
-        let data = builder
-            .build()
-            .map_err(|_| raft_core::snapshot::SnapshotError::CorruptData)?;
-        self.snapshot = Some(raft_core::snapshot::Snapshot { metadata, data });
-        self.persist_snapshot(); // Persist after change
+        metadata: SnapshotMetadata,
+    ) -> Result<(), SnapshotError> {
+        let data = builder.build().map_err(|_| SnapshotError::CorruptData)?;
+        self.snapshot = Some(Snapshot { metadata, data });
+        self.persist_snapshot();
         Ok(())
     }
 
     fn discard_entries_before(&mut self, index: LogIndex) {
-        // Discard entries with log index < index
         if index <= self.first_log_index {
-            return; // Nothing to discard
+            return;
         }
 
         let num_to_discard = (index - self.first_log_index) as usize;
 
         if num_to_discard >= self.log.len() {
-            // Discard all entries
             self.log.clear();
         } else {
-            // Shift remaining entries to beginning
             let mut new_log = AllocVec::new();
             for i in num_to_discard..self.log.len() {
                 new_log.push(self.log[i].clone());
@@ -607,7 +561,7 @@ impl Storage for SemihostingStorage {
         }
 
         self.first_log_index = index;
-        self.persist_log(); // Persist after change
+        self.persist_log();
     }
 
     fn first_log_index(&self) -> LogIndex {
