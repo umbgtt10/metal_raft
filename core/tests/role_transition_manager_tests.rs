@@ -378,16 +378,8 @@ fn test_become_leader_with_multiple_followers() {
     assert_eq!(role, NodeState::Leader);
     // Check that replication is initialized for all followers
     for follower_id in 2..=5 {
-        assert!(
-            replication.next_index().get(follower_id).is_some(),
-            "next_index not initialized for node {}",
-            follower_id
-        );
-        assert!(
-            replication.match_index().get(follower_id).is_some(),
-            "match_index not initialized for node {}",
-            follower_id
-        );
+        assert!(replication.next_index().get(follower_id).is_some(),);
+        assert!(replication.match_index().get(follower_id).is_some(),);
     }
 }
 

@@ -37,29 +37,6 @@ use raft_test_utils::{
 };
 use std::sync::{Arc, Mutex};
 
-fn make_empty_config() -> Configuration<InMemoryNodeCollection> {
-    Configuration::new(InMemoryNodeCollection::new())
-}
-
-type TestHandler = MessageHandler<
-    InMemoryTransport,
-    InMemoryStorage,
-    String,
-    InMemoryStateMachine,
-    InMemoryNodeCollection,
-    InMemoryLogEntryCollection,
-    InMemoryChunkCollection,
-    InMemoryMapCollection,
-    FrozenTimer,
-    NullObserver<String, InMemoryLogEntryCollection>,
-    InMemoryConfigChangeCollection,
-    FrozenClock,
->;
-
-fn create_handler() -> TestHandler {
-    MessageHandler::new()
-}
-
 #[allow(clippy::too_many_arguments)]
 #[allow(clippy::type_complexity)]
 fn create_context<'a>(
@@ -111,6 +88,7 @@ fn create_context<'a>(
 
 #[test]
 fn test_message_handler_start_election() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 5;
@@ -122,12 +100,12 @@ fn test_message_handler_start_election() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(1000);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
     storage.set_current_term(5);
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -144,9 +122,10 @@ fn test_message_handler_start_election() {
         &mut leader_lease,
     );
 
+    // Act
     handler.start_election(&mut ctx);
 
-    // Should have incremented term and changed role
+    // Assert
     assert_eq!(current_term, 6);
     assert!(role == NodeState::Candidate || role == NodeState::Leader);
     assert_eq!(storage.current_term(), 6);
@@ -154,6 +133,7 @@ fn test_message_handler_start_election() {
 
 #[test]
 fn test_message_handler_start_pre_vote() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 5;
@@ -165,12 +145,12 @@ fn test_message_handler_start_pre_vote() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(1000);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
     storage.set_current_term(5);
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -187,9 +167,10 @@ fn test_message_handler_start_pre_vote() {
         &mut leader_lease,
     );
 
+    // Act
     handler.start_pre_vote(&mut ctx);
 
-    // Pre-vote should NOT increment term or change role
+    // Assert
     assert_eq!(current_term, 5);
     assert_eq!(role, NodeState::Follower);
     assert_eq!(storage.current_term(), 5);
@@ -197,6 +178,7 @@ fn test_message_handler_start_pre_vote() {
 
 #[test]
 fn test_message_handler_reuse_across_operations() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 5;
@@ -208,10 +190,11 @@ fn test_message_handler_reuse_across_operations() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(1000);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -227,11 +210,15 @@ fn test_message_handler_reuse_across_operations() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
+
+    // Act
     handler.start_pre_vote(&mut ctx);
 
+    // Assert
     assert_eq!(role, NodeState::Follower);
     assert_eq!(current_term, 5);
 
+    // Act
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -249,12 +236,14 @@ fn test_message_handler_reuse_across_operations() {
     );
     handler.start_election(&mut ctx);
 
+    // Assert
     assert!(role == NodeState::Candidate || role == NodeState::Leader);
     assert_eq!(current_term, 6);
 }
 
 #[test]
 fn test_message_handler_handle_election_timer_as_follower() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 5;
@@ -266,10 +255,11 @@ fn test_message_handler_handle_election_timer_as_follower() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(1000);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -286,16 +276,17 @@ fn test_message_handler_handle_election_timer_as_follower() {
         &mut leader_lease,
     );
 
+    // Act
     handler.handle_timer(&mut ctx, TimerKind::Election);
 
-    // With no peers, pre-vote succeeds and follower becomes leader
+    // Assert
     assert_eq!(role, NodeState::Leader);
-    // Term increments when transitioning to leader
     assert_eq!(current_term, 6);
 }
 
 #[test]
 fn test_message_handler_handle_election_timer_as_leader() {
+    // Arrange
     use raft_core::timer_service::TimerKind;
 
     let node_id = 1;
@@ -309,10 +300,11 @@ fn test_message_handler_handle_election_timer_as_leader() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(1000);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -329,15 +321,17 @@ fn test_message_handler_handle_election_timer_as_leader() {
         &mut leader_lease,
     );
 
+    // Act
     handler.handle_timer(&mut ctx, TimerKind::Election);
 
-    // Leader should ignore election timer
+    // Assert
     assert_eq!(role, NodeState::Leader);
     assert_eq!(current_term, 5);
 }
 
 #[test]
 fn test_message_handler_handle_election_timer_as_candidate() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Candidate;
     let mut current_term = 5;
@@ -346,13 +340,11 @@ fn test_message_handler_handle_election_timer_as_candidate() {
     let mut transport = InMemoryTransport::new(node_id, broker.clone());
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(5);
-    storage.set_voted_for(Some(1)); // Voted for self in current term
+    storage.set_voted_for(Some(1));
     let mut state_machine = InMemoryStateMachine::new();
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Config with peers so we don't win election immediately
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -360,7 +352,7 @@ fn test_message_handler_handle_election_timer_as_candidate() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -377,20 +369,20 @@ fn test_message_handler_handle_election_timer_as_candidate() {
         &mut leader_lease,
     );
 
-    // Candidate timeout -> triggers Pre-Vote (term stays same)
+    // Act
     handler.handle_timer(&mut ctx, TimerKind::Election);
 
+    // Assert
     assert_eq!(*ctx.role, NodeState::Candidate);
     assert_eq!(*ctx.current_term, 5);
     assert_eq!(storage.current_term(), 5);
-
-    // Should broadcast PreVoteRequest
     let messages = broker.lock().unwrap();
     assert!(messages.peak(2).is_some());
 }
 
 #[test]
 fn test_message_handler_handle_heartbeat_timer_as_leader() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 5;
@@ -403,8 +395,6 @@ fn test_message_handler_handle_heartbeat_timer_as_leader() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Config with peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -412,10 +402,8 @@ fn test_message_handler_handle_heartbeat_timer_as_leader() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    // Init leader state
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -432,16 +420,17 @@ fn test_message_handler_handle_heartbeat_timer_as_leader() {
         &mut leader_lease,
     );
 
-    // Heartbeat timer fires
+    // Act
     handler.handle_timer(&mut ctx, TimerKind::Heartbeat);
 
-    // Should broadcast Heartbeat (AppendEntries)
+    // Assert
     let messages = broker.lock().unwrap();
     assert!(messages.peak(2).is_some());
 }
 
 #[test]
 fn test_message_handler_submit_client_command_as_follower_fails() {
+    // Arrange
     let node_id = 2;
     let mut role = NodeState::Follower;
     let mut current_term = 1;
@@ -453,10 +442,11 @@ fn test_message_handler_submit_client_command_as_follower_fails() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(1000);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -473,12 +463,16 @@ fn test_message_handler_submit_client_command_as_follower_fails() {
         &mut leader_lease,
     );
 
+    // Act
     let result = handler.submit_client_command(&mut ctx, "test_command".to_string());
+
+    // Assert
     assert_eq!(result, Err(ClientError::NotLeader { leader_hint: None }));
 }
 
 #[test]
 fn test_message_handler_submit_config_change_as_follower_fails() {
+    // Arrange
     let node_id = 2;
     let mut role = NodeState::Follower;
     let mut current_term = 1;
@@ -490,10 +484,11 @@ fn test_message_handler_submit_config_change_as_follower_fails() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(1000);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -510,12 +505,16 @@ fn test_message_handler_submit_config_change_as_follower_fails() {
         &mut leader_lease,
     );
 
+    // Act
     let result = handler.submit_config_change(&mut ctx, ConfigurationChange::AddServer(4));
+
+    // Assert
     assert_eq!(result, Err(ClientError::NotLeader { leader_hint: None }));
 }
 
 #[test]
 fn test_message_handler_handles_higher_term_message() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 1;
@@ -528,10 +527,11 @@ fn test_message_handler_handles_higher_term_message() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -547,23 +547,25 @@ fn test_message_handler_handles_higher_term_message() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
     let msg = RaftMsg::AppendEntries {
-        term: 2, // Higher term
+        term: 2,
         prev_log_index: 0,
         prev_log_term: 0,
         entries: InMemoryLogEntryCollection::new(&[]),
         leader_commit: 0,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    assert_eq!(current_term, 2); // Term updated
-    assert_eq!(role, NodeState::Follower); // Became follower
+    // Assert
+    assert_eq!(current_term, 2);
+    assert_eq!(role, NodeState::Follower);
 }
 
 #[test]
 fn test_message_handler_handles_pre_vote_request() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 2;
@@ -576,10 +578,11 @@ fn test_message_handler_handles_pre_vote_request() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -595,7 +598,6 @@ fn test_message_handler_handles_pre_vote_request() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
     let msg = RaftMsg::PreVoteRequest {
         term: 2,
         candidate_id: 2,
@@ -603,15 +605,17 @@ fn test_message_handler_handles_pre_vote_request() {
         last_log_term: 0,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    // Should send response message
+    // Assert
     let messages = broker.lock().unwrap();
     assert!(messages.peak(2).is_some());
 }
 
 #[test]
 fn test_message_handler_handles_vote_request() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 2;
@@ -624,10 +628,11 @@ fn test_message_handler_handles_vote_request() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -643,7 +648,6 @@ fn test_message_handler_handles_vote_request() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
     let msg = RaftMsg::RequestVote {
         term: 2,
         candidate_id: 2,
@@ -651,14 +655,16 @@ fn test_message_handler_handles_vote_request() {
         last_log_term: 0,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    // Should send response and grant vote (first request)
+    // Assert
     assert_eq!(storage.voted_for(), Some(2));
 }
 
 #[test]
 fn test_message_handler_handles_append_entries_success() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 2;
@@ -671,10 +677,11 @@ fn test_message_handler_handles_append_entries_success() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -690,7 +697,6 @@ fn test_message_handler_handles_append_entries_success() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
     let msg = RaftMsg::AppendEntries {
         term: 2,
         prev_log_index: 0,
@@ -699,15 +705,17 @@ fn test_message_handler_handles_append_entries_success() {
         leader_commit: 0,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    // Should send response
+    // Assert
     let messages = broker.lock().unwrap();
     assert!(messages.peak(2).is_some());
 }
 
 #[test]
 fn test_message_handler_broadcast_to_peers() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 5;
@@ -720,8 +728,6 @@ fn test_message_handler_broadcast_to_peers() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with multiple peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -730,7 +736,7 @@ fn test_message_handler_broadcast_to_peers() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -747,10 +753,10 @@ fn test_message_handler_broadcast_to_peers() {
         &mut leader_lease,
     );
 
-    // Send heartbeats (broadcasts to all peers)
+    // Act
     handler.send_heartbeats(&mut ctx);
 
-    // Should have messages for both peers
+    // Assert
     let messages = broker.lock().unwrap();
     assert!(messages.peak(2).is_some());
     assert!(messages.peak(3).is_some());
@@ -758,6 +764,7 @@ fn test_message_handler_broadcast_to_peers() {
 
 #[test]
 fn test_message_handler_send_append_entries_to_followers() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 5;
@@ -770,8 +777,6 @@ fn test_message_handler_send_append_entries_to_followers() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -779,10 +784,8 @@ fn test_message_handler_send_append_entries_to_followers() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    // Initialize replication state
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -799,15 +802,17 @@ fn test_message_handler_send_append_entries_to_followers() {
         &mut leader_lease,
     );
 
+    // Act
     handler.send_append_entries_to_followers(&mut ctx);
 
-    // Should send AppendEntries to follower
+    // Assert
     let messages = broker.lock().unwrap();
     assert!(messages.peak(2).is_some());
 }
 
 #[test]
 fn test_message_handler_handles_vote_response_updates_election_state() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Candidate;
     let mut current_term = 2;
@@ -821,8 +826,6 @@ fn test_message_handler_handles_vote_response_updates_election_state() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with 3 nodes
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -831,15 +834,13 @@ fn test_message_handler_handles_vote_response_updates_election_state() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    // Start election first to initialize vote tracking
     election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, _>(
         node_id,
         &mut current_term,
         &mut storage,
         &mut role,
     );
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -855,22 +856,21 @@ fn test_message_handler_handles_vote_response_updates_election_state() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
-    // Handle vote response
     let msg = RaftMsg::RequestVoteResponse {
         term: 2,
         vote_granted: true,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    // Vote response is handled (exact behavior depends on internal logic)
-    // The important part is it doesn't crash
+    // Assert
     assert!(role == NodeState::Candidate || role == NodeState::Leader);
 }
 
 #[test]
 fn test_message_handler_handles_install_snapshot_message() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Follower;
     let mut current_term = 2;
@@ -883,10 +883,11 @@ fn test_message_handler_handles_install_snapshot_message() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-    let mut config_manager = ConfigChangeManager::new(make_empty_config());
+    let mut config_manager =
+        ConfigChangeManager::new(Configuration::new(InMemoryNodeCollection::new()));
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -902,7 +903,6 @@ fn test_message_handler_handles_install_snapshot_message() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
     let msg = RaftMsg::InstallSnapshot {
         term: 2,
         leader_id: 2,
@@ -913,15 +913,17 @@ fn test_message_handler_handles_install_snapshot_message() {
         done: true,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    // Should send response
+    // Assert
     let messages = broker.lock().unwrap();
     assert!(messages.peak(2).is_some());
 }
 
 #[test]
 fn test_message_handler_handles_install_snapshot_response() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
@@ -934,8 +936,6 @@ fn test_message_handler_handles_install_snapshot_response() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -943,10 +943,8 @@ fn test_message_handler_handles_install_snapshot_response() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    // Initialize replication state
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -962,20 +960,21 @@ fn test_message_handler_handles_install_snapshot_response() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
     let msg = RaftMsg::InstallSnapshotResponse {
         term: 2,
         success: true,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    // Response is processed (doesn't crash)
+    // Assert
     assert_eq!(role, NodeState::Leader);
 }
 
 #[test]
 fn test_message_handler_submit_client_command_as_leader_succeeds() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
@@ -988,8 +987,6 @@ fn test_message_handler_submit_client_command_as_leader_succeeds() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -997,10 +994,8 @@ fn test_message_handler_submit_client_command_as_leader_succeeds() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    // Initialize replication state
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -1017,14 +1012,16 @@ fn test_message_handler_submit_client_command_as_leader_succeeds() {
         &mut leader_lease,
     );
 
-    // Submit command as leader should succeed
+    // Act
     let result = handler.submit_client_command(&mut ctx, "test_command".to_string());
 
+    // Assert
     assert!(result.is_ok());
 }
 
 #[test]
 fn test_message_handler_submit_config_change_as_leader_succeeds() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
@@ -1037,18 +1034,14 @@ fn test_message_handler_submit_config_change_as_leader_succeeds() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with existing nodes
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     let config = Configuration::new(members);
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    // Initialize replication state
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -1064,16 +1057,18 @@ fn test_message_handler_submit_config_change_as_leader_succeeds() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
-    // Submit config change as leader should succeed
     let config_change = ConfigurationChange::AddServer(2);
+
+    // Act
     let result = handler.submit_config_change(&mut ctx, config_change);
 
+    // Assert
     assert!(result.is_ok());
 }
 
 #[test]
 fn test_message_handler_handles_append_entries_response() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
@@ -1086,8 +1081,6 @@ fn test_message_handler_handles_append_entries_response() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -1095,10 +1088,9 @@ fn test_message_handler_handles_append_entries_response() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    // Initialize replication state
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
 
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -1121,14 +1113,16 @@ fn test_message_handler_handles_append_entries_response() {
         match_index: 0,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    // Should update replication state
+    // Assert
     assert!(replication.match_index().get(2).is_some());
 }
 
 #[test]
 fn test_message_handler_ignores_stale_append_entries_response() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 3;
@@ -1141,8 +1135,6 @@ fn test_message_handler_ignores_stale_append_entries_response() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -1150,13 +1142,10 @@ fn test_message_handler_ignores_stale_append_entries_response() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-    // Initialize replication state
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
-
     let initial_match_index = replication.match_index().get(2);
     let initial_commit_index = replication.commit_index();
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -1172,16 +1161,16 @@ fn test_message_handler_ignores_stale_append_entries_response() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
-    // Stale term response should be ignored
     let msg = RaftMsg::AppendEntriesResponse {
         term: 2,
         success: true,
         match_index: 10,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
+    // Assert
     assert_eq!(replication.match_index().get(2), initial_match_index);
     assert_eq!(replication.commit_index(), initial_commit_index);
     assert_eq!(role, NodeState::Leader);
@@ -1190,6 +1179,7 @@ fn test_message_handler_ignores_stale_append_entries_response() {
 
 #[test]
 fn test_message_handler_grants_lease_on_commit_advance() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
@@ -1202,8 +1192,6 @@ fn test_message_handler_grants_lease_on_commit_advance() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -1211,19 +1199,14 @@ fn test_message_handler_grants_lease_on_commit_advance() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-
-    // Initialize replication state
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
-
-    // Add a log entry to replicate
     let payload = "test command".to_string();
     let log_entry = LogEntry {
         term: 2,
         entry_type: EntryType::Command(payload.clone()),
     };
     storage.append_entries(&[log_entry]);
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -1239,28 +1222,24 @@ fn test_message_handler_grants_lease_on_commit_advance() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
-    // Initially lease should be invalid
     assert!(!ctx.leader_lease.is_valid());
-
-    // Send append entries response that advances commit index to 1
     let msg = RaftMsg::AppendEntriesResponse {
         term: 2,
         success: true,
-        match_index: 1, // Follower has replicated the entry at index 1
+        match_index: 1,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    // Commit index should advance to 1 (quorum of 2 nodes)
+    // Assert
     assert_eq!(ctx.replication.commit_index(), 1);
-
-    // Lease should now be valid
     assert!(ctx.leader_lease.is_valid());
 }
 
 #[test]
 fn test_message_handler_revokes_lease_on_step_down() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
@@ -1273,8 +1252,6 @@ fn test_message_handler_revokes_lease_on_step_down() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -1282,11 +1259,8 @@ fn test_message_handler_revokes_lease_on_step_down() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-
-    // Initialize replication state
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -1302,12 +1276,8 @@ fn test_message_handler_revokes_lease_on_step_down() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
-    // Grant lease manually for this test
     ctx.leader_lease.grant();
     assert!(ctx.leader_lease.is_valid());
-
-    // Simulate receiving a higher term message that causes step down
     let msg = RaftMsg::AppendEntries {
         term: 3,
         prev_log_index: 0,
@@ -1316,20 +1286,20 @@ fn test_message_handler_revokes_lease_on_step_down() {
         leader_commit: 0,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    // Should have stepped down
+    // Assert
     assert_eq!(*ctx.role, NodeState::Follower);
     assert_eq!(*ctx.current_term, 3);
-
-    // Lease should be revoked
     assert!(!ctx.leader_lease.is_valid());
 }
 
 #[test]
 fn test_message_handler_does_not_grant_lease_for_non_leader() {
+    // Arrange
     let node_id = 1;
-    let mut role = NodeState::Follower; // Not a leader
+    let mut role = NodeState::Follower;
     let mut current_term = 2;
     let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
@@ -1340,8 +1310,6 @@ fn test_message_handler_does_not_grant_lease_for_non_leader() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -1349,11 +1317,8 @@ fn test_message_handler_does_not_grant_lease_for_non_leader() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-
-    // Initialize replication state (even though we're not leader)
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -1369,28 +1334,26 @@ fn test_message_handler_does_not_grant_lease_for_non_leader() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
-    // Initially lease should be invalid
     assert!(!ctx.leader_lease.is_valid());
-
-    // Send append entries response - should be ignored since we're not leader
     let msg = RaftMsg::AppendEntriesResponse {
         term: 2,
         success: true,
         match_index: 1,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    // Lease should still be invalid (not granted)
+    // Assert
     assert!(!ctx.leader_lease.is_valid());
 }
 
 #[test]
 fn test_message_handler_does_not_grant_lease_for_stale_term() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
-    let mut current_term = 3; // Higher term than the response
+    let mut current_term = 3;
     let mut current_leader = None;
     let broker = Arc::new(Mutex::new(MessageBroker::new()));
     let mut transport = InMemoryTransport::new(node_id, broker);
@@ -1400,8 +1363,6 @@ fn test_message_handler_does_not_grant_lease_for_stale_term() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -1409,11 +1370,8 @@ fn test_message_handler_does_not_grant_lease_for_stale_term() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-
-    // Initialize replication state
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -1429,25 +1387,23 @@ fn test_message_handler_does_not_grant_lease_for_stale_term() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
-    // Initially lease should be invalid
     assert!(!ctx.leader_lease.is_valid());
-
-    // Send append entries response with stale term (2 < 3)
     let msg = RaftMsg::AppendEntriesResponse {
-        term: 2, // Stale term
+        term: 2,
         success: true,
         match_index: 1,
     };
 
+    // Act
     handler.handle_message(&mut ctx, 2, msg);
 
-    // Lease should still be invalid (not granted due to stale term)
+    // Assert
     assert!(!ctx.leader_lease.is_valid());
 }
 
 #[test]
 fn test_message_handler_lease_remains_valid_across_multiple_commits() {
+    // Arrange
     let node_id = 1;
     let mut role = NodeState::Leader;
     let mut current_term = 2;
@@ -1460,8 +1416,6 @@ fn test_message_handler_lease_remains_valid_across_multiple_commits() {
     let mut observer = NullObserver::new();
     let mut election = ElectionManager::new(FrozenTimer);
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
-
-    // Create config with peers
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
@@ -1469,11 +1423,7 @@ fn test_message_handler_lease_remains_valid_across_multiple_commits() {
     let mut config_manager = ConfigChangeManager::new(config);
     let mut snapshot_manager = SnapshotManager::new(10);
     let mut leader_lease = LeaderLease::new(5000, FrozenClock);
-
-    // Initialize replication state
     replication.initialize_leader_state(config_manager.config().members.iter(), &storage);
-
-    // Add multiple log entries
     let entries = vec![
         LogEntry {
             term: 2,
@@ -1487,8 +1437,7 @@ fn test_message_handler_lease_remains_valid_across_multiple_commits() {
     for entry in entries {
         storage.append_entries(&[entry]);
     }
-
-    let handler = create_handler();
+    let handler = MessageHandler::new();
     let mut ctx = create_context(
         &node_id,
         &mut role,
@@ -1504,29 +1453,29 @@ fn test_message_handler_lease_remains_valid_across_multiple_commits() {
         &mut snapshot_manager,
         &mut leader_lease,
     );
-
-    // Initially lease should be invalid
     assert!(!ctx.leader_lease.is_valid());
 
-    // First response - advance commit to 1
+    // Act
     let msg1 = RaftMsg::AppendEntriesResponse {
         term: 2,
         success: true,
         match_index: 1,
     };
     handler.handle_message(&mut ctx, 2, msg1);
+
+    // Assert
     assert_eq!(ctx.replication.commit_index(), 1);
     assert!(ctx.leader_lease.is_valid());
 
-    // Second response - advance commit to 2
+    // Act
     let msg2 = RaftMsg::AppendEntriesResponse {
         term: 2,
         success: true,
         match_index: 2,
     };
     handler.handle_message(&mut ctx, 2, msg2);
-    assert_eq!(ctx.replication.commit_index(), 2);
 
-    // Lease should still be valid (not revoked by subsequent commits)
+    // Assert
+    assert_eq!(ctx.replication.commit_index(), 2);
     assert!(ctx.leader_lease.is_valid());
 }
