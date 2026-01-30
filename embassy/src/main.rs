@@ -14,7 +14,7 @@ use panic_semihosting as _;
 #[macro_use]
 pub mod logging;
 pub mod cancellation_token;
-pub mod cluster;
+pub mod raft_client;
 pub mod collections;
 pub mod config;
 pub mod configurations;
@@ -46,8 +46,8 @@ async fn main(spawner: Spawner) {
     let observer_level = config::get_observer_level();
     info!("Observer level: {:?}", observer_level);
 
-    // Initialize cluster (handles all network/channel setup internally)
-    let cluster =
+    // Initialize client (handles communication with Raft cluster)
+    let client =
         configurations::setup::initialize_cluster(spawner, cancel.clone(), observer_level).await;
 
     info!("All nodes started.");
@@ -60,7 +60,7 @@ async fn main(spawner: Spawner) {
     for i in 1..=3 {
         let command = alloc::format!("key{}=value{}", i, i);
         info!("Submitting: {}", command);
-        match cluster.submit_command(command).await {
+        match client.submit_command(command).await {
             Ok(_) => info!("Command {} committed successfully!", i),
             Err(e) => info!("Command {} failed: {:?}", i, e),
         }
@@ -74,7 +74,7 @@ async fn main(spawner: Spawner) {
     info!("Reading back committed values...");
     for i in 1..=3 {
         let key = alloc::format!("key{}", i);
-        match cluster.read_value(&key).await {
+        match client.read_value(&key).await {
             Ok(Some(value)) => {
                 info!("READ {} = {}", key, value);
             }
@@ -92,7 +92,7 @@ async fn main(spawner: Spawner) {
     embassy_time::Timer::after(Duration::from_secs(1)).await;
 
     info!("1 seconds elapsed. Initiating graceful shutdown...");
-    cluster.shutdown();
+    client.shutdown();
 
     // Give tasks time to finish
     embassy_time::Timer::after(Duration::from_millis(500)).await;

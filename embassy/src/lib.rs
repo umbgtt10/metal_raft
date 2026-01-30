@@ -13,7 +13,7 @@ extern crate alloc;
 #[macro_use]
 pub mod logging;
 pub mod cancellation_token;
-pub mod cluster;
+pub mod raft_client;
 pub mod config;
 
 pub mod collections;

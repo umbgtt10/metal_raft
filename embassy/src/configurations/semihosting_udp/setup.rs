@@ -3,7 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::cancellation_token::CancellationToken;
-use crate::cluster::RaftCluster;
+use crate::raft_client::RaftClient;
 use crate::configurations::storage::semihosting::SemihostingStorage;
 use crate::configurations::transport::udp::config::{self, get_node_config};
 use crate::configurations::transport::udp::driver::{MockNetDriver, NetworkBus};
@@ -20,7 +20,7 @@ pub async fn initialize_cluster(
     spawner: Spawner,
     cancel: CancellationToken,
     observer_level: EventLevel,
-) -> RaftCluster {
+) -> RaftClient {
     info!("Using UDP transport (simulated Ethernet)");
     info!("WireRaftMsg serialization layer: COMPLETE ✓");
 
@@ -110,7 +110,7 @@ pub async fn initialize_cluster(
 
         let transport_impl = UdpTransport::new(node_id_u64, outbox_sender, inbox_receiver);
         let storage = SemihostingStorage::new(node_id_u64);
-        let client_rx = RaftCluster::client_channel_receiver(node_id as u64);
+        let client_rx = RaftClient::client_channel_receiver(node_id as u64);
         let node = EmbassyNode::new(
             node_id_u64,
             storage,
@@ -128,7 +128,7 @@ pub async fn initialize_cluster(
 
     info!("All UDP nodes started!");
 
-    RaftCluster::new(cancel)
+    RaftClient::new(cancel)
 }
 
 #[embassy_executor::task(pool_size = 5)]

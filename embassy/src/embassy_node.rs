@@ -12,7 +12,7 @@ use embassy_time::Duration;
 use raft_core::components::message_handler::ReadError;
 
 use crate::cancellation_token::CancellationToken;
-use crate::cluster::{ClientRequest, ClusterError};
+use crate::raft_client::{ClientRequest, ClusterError};
 use crate::collections::embassy_config_change_collection::EmbassyConfigChangeCollection;
 use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::collections::embassy_map_collection::EmbassyMapCollection;

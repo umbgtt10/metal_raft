@@ -3,7 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::cancellation_token::CancellationToken;
-use crate::cluster::RaftCluster;
+use crate::client::RaftClient;
 use crate::configurations::storage::in_memory::InMemoryStorage;
 use crate::configurations::transport::channel::transport::ChannelTransportHub;
 use crate::configurations::transport::channel::ChannelTransport;
@@ -18,7 +18,7 @@ pub async fn initialize_cluster(
     spawner: Spawner,
     cancel: CancellationToken,
     observer_level: EventLevel,
-) -> RaftCluster {
+) -> RaftClient {
     info!("Using Channel transport (In-Memory)");
 
     // Get the singleton hub
@@ -34,14 +34,8 @@ pub async fn initialize_cluster(
         let storage = InMemoryStorage::new();
 
         // Create the node
-        let client_rx = RaftCluster::client_channel_receiver(node_id);
-        let node = EmbassyNode::new(
-            node_id_u64,
-            storage,
-            transport,
-            client_rx,
-            observer_level,
-        );
+        let client_rx = RaftClient::client_channel_receiver(node_id);
+        let node = EmbassyNode::new(node_id_u64, storage, transport, client_rx, observer_level);
 
         // Spawn Node Task
         spawner
@@ -50,7 +44,7 @@ pub async fn initialize_cluster(
     }
 
     // Return cluster handle for client interaction
-    RaftCluster::new(cancel)
+    RaftClient::new(cancel)
 }
 
 // Channel Raft Wrapper
