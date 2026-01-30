@@ -2,11 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-//! Tests for MessageHandler in isolation
-//!
-//! These tests demonstrate that MessageHandler can be instantiated and used
-//! independently of RaftNode through MessageHandlerContext.
-
 use raft_core::{
     collections::{
         configuration::Configuration, log_entry_collection::LogEntryCollection,
