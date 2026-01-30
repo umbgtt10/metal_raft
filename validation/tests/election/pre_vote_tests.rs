@@ -104,7 +104,6 @@ fn test_safety_pre_vote_rejection_stale_log() {
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
-    cluster.deliver_messages();
 
     // Assert
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
@@ -189,7 +188,6 @@ fn test_safety_pre_vote_does_not_disrupt_leader() {
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
-    cluster.deliver_messages();
 
     // Assert
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
@@ -232,7 +230,8 @@ fn test_safety_partitioned_minority_pre_vote_fails() {
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
-    cluster.deliver_messages();
+
+    // Assert
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
 
     // Act
