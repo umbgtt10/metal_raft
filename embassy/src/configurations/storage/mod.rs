@@ -9,7 +9,7 @@ compile_error!("Features 'in-memory-storage' and 'semihosting-storage' are mutua
 pub mod in_memory;
 
 #[cfg(feature = "in-memory-storage")]
-pub use in_memory::storage::InMemoryStorage;
+pub use in_memory::in_memory_storage::InMemoryStorage;
 
 #[cfg(feature = "semihosting-storage")]
 pub mod semihosting;

@@ -7,6 +7,9 @@
 
 extern crate alloc;
 
+use cancellation_token::CancellationToken;
+use client_channel_hub::ClientChannelHub;
+use configurations::setup;
 use embassy_executor::Spawner;
 use embassy_time::Duration;
 use panic_semihosting as _;
@@ -21,17 +24,11 @@ pub mod configurations;
 pub mod embassy_node;
 pub mod embassy_observer;
 pub mod embassy_state_machine;
-pub mod embassy_storage;
 pub mod embassy_timer;
 pub mod heap;
 pub mod led_state;
 pub mod raft_client;
 pub mod time_driver;
-
-use cancellation_token::CancellationToken;
-use client_channel_hub::ClientChannelHub;
-
-use crate::configurations::setup::initialize_client;
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -50,7 +47,8 @@ async fn main(spawner: Spawner) {
 
     let client_channel_hub = ClientChannelHub::new();
     let client =
-        initialize_client(&client_channel_hub, spawner, cancel.clone(), observer_level).await;
+        setup::initialize_client(&client_channel_hub, spawner, cancel.clone(), observer_level)
+            .await;
 
     info!("All nodes started.");
 

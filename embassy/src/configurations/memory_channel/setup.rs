@@ -5,14 +5,16 @@
 use crate::cancellation_token::CancellationToken;
 use crate::client_channel_hub::ClientChannelHub;
 use crate::configurations::storage::InMemoryStorage;
-use crate::configurations::transport::channel::transport::{ChannelTransport, ChannelTransportHub};
+use crate::configurations::transport::channel::channel_transport_hub::{
+    ChannelTransport, ChannelTransportHub,
+};
 use crate::embassy_node::EmbassyNode;
 use crate::info;
 use crate::raft_client::RaftClient;
 use embassy_executor::Spawner;
 use raft_core::observer::EventLevel;
 
-pub async fn initialize_cluster(
+pub async fn initialize_client(
     client_hub: &ClientChannelHub,
     spawner: Spawner,
     cancel: CancellationToken,
