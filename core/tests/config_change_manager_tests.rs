@@ -23,7 +23,7 @@ use raft_test_utils::{
 
 fn make_test_config(nodes: &[u64]) -> Configuration<InMemoryNodeCollection> {
     let mut members = InMemoryNodeCollection::new();
-    // Include self (node 1) in configuration
+
     members.push(1).unwrap();
     for &node_id in nodes {
         members.push(node_id).unwrap();
@@ -33,11 +33,15 @@ fn make_test_config(nodes: &[u64]) -> Configuration<InMemoryNodeCollection> {
 
 #[test]
 fn test_new_manager() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
+
+    // Act
     let manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    assert_eq!(manager.config().size(), 3); // nodes 1, 2, 3
+    // Assert
+    assert_eq!(manager.config().size(), 3);
     assert!(manager.config().contains(1));
     assert!(manager.config().contains(2));
     assert!(manager.config().contains(3));
@@ -45,376 +49,368 @@ fn test_new_manager() {
 
 #[test]
 fn test_config_getter() {
+    // Arrange
     let config = make_test_config(&[2, 3, 4]);
     let manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
+    // Act
     let retrieved_config = manager.config();
-    assert_eq!(retrieved_config.size(), 4); // nodes 1, 2, 3, 4
-    assert_eq!(retrieved_config.quorum_size(), 3); // (4/2)+1 = 3
-}
 
-// ============================================================================
-// add_server Validation Tests
-// ============================================================================
+    // Assert
+    assert_eq!(retrieved_config.size(), 4);
+    assert_eq!(retrieved_config.quorum_size(), 3);
+}
 
 #[test]
 fn test_add_server_not_leader() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    let result = manager.add_server(
-        4,     // node_id to add
-        1,     // self_id
-        false, // is_leader = false
-        0,     // commit_index
-    );
+    // Act
+    let result = manager.add_server(4, 1, false, 0);
 
+    // Assert
     assert_eq!(result, Err(ConfigError::NotLeader));
 }
 
 #[test]
 fn test_add_server_already_exists_in_peers() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    let result = manager.add_server(
-        2,    // node already in config
-        1,    // self_id
-        true, // is_leader
-        0,    // commit_index
-    );
+    // Act
+    let result = manager.add_server(2, 1, true, 0);
 
+    // Assert
     assert_eq!(result, Err(ConfigError::NodeAlreadyExists));
 }
 
 #[test]
 fn test_add_server_self_already_exists() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    let result = manager.add_server(
-        1,    // self_id
-        1,    // self_id
-        true, // is_leader
-        0,    // commit_index
-    );
+    // Act
+    let result = manager.add_server(1, 1, true, 0);
 
+    // Assert
     assert_eq!(result, Err(ConfigError::NodeAlreadyExists));
 }
 
 #[test]
 fn test_add_server_config_change_in_progress() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
-
-    // First add succeeds
     let result1 = manager.add_server(4, 1, true, 0);
     assert!(result1.is_ok());
-    manager.track_pending_change(10); // Simulate tracking at index 10
+    manager.track_pending_change(10);
 
-    // Second add should fail because first is not committed
-    let result2 = manager.add_server(
-        5,    // different node
-        1,    // self_id
-        true, // is_leader
-        5,    // commit_index = 5 (< 10, so not committed)
-    );
+    // Act
+    let result2 = manager.add_server(5, 1, true, 5);
 
+    // Assert
     assert_eq!(result2, Err(ConfigError::ConfigChangeInProgress));
 }
 
 #[test]
 fn test_add_server_allows_new_change_after_commit() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
-
-    // First add succeeds
     let result1 = manager.add_server(4, 1, true, 0);
     assert!(result1.is_ok());
     manager.track_pending_change(10);
 
-    // Second add succeeds because first is committed (commit_index >= 10)
+    // Act
     let result2 = manager.add_server(5, 1, true, 10);
+
+    // Assert
     assert!(result2.is_ok());
     assert_eq!(result2.unwrap(), ConfigurationChange::AddServer(5));
 }
 
 #[test]
 fn test_add_server_returns_correct_change() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
+    // Act
     let result = manager.add_server(4, 1, true, 0);
 
+    // Assert
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), ConfigurationChange::AddServer(4));
 }
 
-// ============================================================================
-// remove_server Validation Tests
-// ============================================================================
-
 #[test]
 fn test_remove_server_not_leader() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    let result = manager.remove_server(
-        3,     // node_id to remove
-        1,     // self_id
-        false, // is_leader = false
-        0,     // commit_index
-    );
+    // Act
+    let result = manager.remove_server(3, 1, false, 0);
 
+    // Assert
     assert_eq!(result, Err(ConfigError::NotLeader));
 }
 
 #[test]
 fn test_remove_server_not_found() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    let result = manager.remove_server(
-        99,   // node not in config (and not self)
-        1,    // self_id
-        true, // is_leader
-        0,    // commit_index
-    );
+    // Act
+    let result = manager.remove_server(99, 1, true, 0);
 
+    // Assert
     assert_eq!(result, Err(ConfigError::NodeNotFound));
 }
 
 #[test]
 fn test_remove_server_last_node() {
+    // Arrange
     let config = make_test_config(&[]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    // Trying to remove self when it's the only node
-    let result = manager.remove_server(
-        1,    // self
-        1,    // self_id
-        true, // is_leader
-        0,    // commit_index
-    );
+    // Act
+    let result = manager.remove_server(1, 1, true, 0);
 
+    // Assert
     assert_eq!(result, Err(ConfigError::CannotRemoveLastNode));
 }
 
 #[test]
 fn test_remove_server_self_allowed() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    // Leader can remove itself as long as it's not the last node
-    let result = manager.remove_server(
-        1,    // self
-        1,    // self_id
-        true, // is_leader
-        0,    // commit_index
-    );
+    // Act
+    let result = manager.remove_server(1, 1, true, 0);
 
+    // Assert
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), ConfigurationChange::RemoveServer(1));
 }
 
 #[test]
 fn test_remove_server_config_change_in_progress() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    // First remove succeeds
+    // Act
     let result1 = manager.remove_server(3, 1, true, 0);
-    assert!(result1.is_ok());
-    manager.track_pending_change(10);
 
-    // Second remove should fail
+    // Assert
+    assert!(result1.is_ok());
+
+    // Act
+    manager.track_pending_change(10);
     let result2 = manager.remove_server(2, 1, true, 5);
 
+    // Assert
     assert_eq!(result2, Err(ConfigError::ConfigChangeInProgress));
 }
 
 #[test]
 fn test_remove_server_returns_correct_change() {
+    // Arrange
     let config = make_test_config(&[2, 3, 4]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
+    // Act
     let result = manager.remove_server(3, 1, true, 0);
 
+    // Assert
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), ConfigurationChange::RemoveServer(3));
 }
 
-// ============================================================================
-// Pending Change Tracking Tests
-// ============================================================================
-
 #[test]
 fn test_track_pending_change() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
-
     manager.track_pending_change(42);
 
-    // Verify it blocks new changes
+    // Act
     let result = manager.add_server(4, 1, true, 10);
+
+    // Assert
     assert_eq!(result, Err(ConfigError::ConfigChangeInProgress));
 }
 
 #[test]
 fn test_is_change_committed() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    assert!(manager.is_change_committed(5, 10)); // index <= commit_index
-    assert!(manager.is_change_committed(10, 10)); // index == commit_index
-    assert!(!manager.is_change_committed(15, 10)); // index > commit_index
+    // Act & Assert
+    assert!(manager.is_change_committed(5, 10));
+    assert!(manager.is_change_committed(10, 10));
+    assert!(!manager.is_change_committed(15, 10));
 }
 
 #[test]
 fn test_pending_change_cleared_after_commit() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    // Add server and track it
+    // Act
     let result1 = manager.add_server(4, 1, true, 0);
+
+    // Assert
     assert!(result1.is_ok());
+
+    // Act
     manager.track_pending_change(10);
-
-    // With commit_index < 10, new change blocked
     let result2 = manager.add_server(5, 1, true, 9);
-    assert_eq!(result2, Err(ConfigError::ConfigChangeInProgress));
-
-    // With commit_index >= 10, new change allowed
     let result3 = manager.add_server(5, 1, true, 10);
+
+    // Assert
+    assert_eq!(result2, Err(ConfigError::ConfigChangeInProgress));
     assert!(result3.is_ok());
 }
 
-// ============================================================================
-// Edge Cases
-// ============================================================================
-
 #[test]
 fn test_add_to_empty_cluster() {
+    // Arrange
     let config = make_test_config(&[]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    // Single node cluster (self_id=1, no peers)
+    // Act
     let result = manager.add_server(2, 1, true, 0);
 
+    // Assert
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), ConfigurationChange::AddServer(2));
 }
 
 #[test]
 fn test_remove_from_two_node_cluster() {
+    // Arrange
     let config = make_test_config(&[2]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    // Two node cluster (self_id=1, peer=2)
+    // Act
     let result = manager.remove_server(2, 1, true, 0);
 
+    // Assert
     assert!(result.is_ok());
     assert_eq!(result.unwrap(), ConfigurationChange::RemoveServer(2));
 }
 
 #[test]
 fn test_cannot_remove_only_member() {
+    // Arrange
     let config = make_test_config(&[]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    // Single node, trying to remove self
+    // Act
     let result = manager.remove_server(1, 1, true, 0);
 
+    // Assert
     assert_eq!(result, Err(ConfigError::CannotRemoveLastNode));
 }
 
 #[test]
 fn test_multiple_changes_in_sequence() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    // Change 1
+    // Act
     let result1 = manager.add_server(4, 1, true, 0);
+
+    // Assert
     assert!(result1.is_ok());
+
+    // Act
     manager.track_pending_change(10);
-
-    // Change 2 (after first commits)
     let result2 = manager.remove_server(3, 1, true, 10);
+
+    // Assert
     assert!(result2.is_ok());
+
+    // Act
     manager.track_pending_change(15);
-
-    // Change 3 (blocked)
     let result3 = manager.add_server(5, 1, true, 14);
-    assert_eq!(result3, Err(ConfigError::ConfigChangeInProgress));
-
-    // Change 3 (allowed after commit)
     let result4 = manager.add_server(5, 1, true, 15);
+
+    // Assert
+    assert_eq!(result3, Err(ConfigError::ConfigChangeInProgress));
     assert!(result4.is_ok());
 }
 
-// ============================================================================
-// Integration-like Tests (without full RaftNode)
-// ============================================================================
-
 #[test]
 fn test_config_manager_workflow() {
+    // Arrange
     let config = make_test_config(&[2, 3]);
     let mut manager: ConfigChangeManager<InMemoryNodeCollection, InMemoryMapCollection> =
         ConfigChangeManager::new(config);
 
-    // 1. Validate we can add a server
+    // Act
     let change = manager.add_server(4, 1, true, 0).unwrap();
+
+    // Assert
     assert_eq!(change, ConfigurationChange::AddServer(4));
 
-    // 2. Track it at index 10
+    // Act
     manager.track_pending_change(10);
+    let result = manager.add_server(5, 1, true, 9);
+    let change2 = manager.remove_server(2, 1, true, 10);
 
-    // 3. Try another change before commit - fails
-    assert_eq!(
-        manager.add_server(5, 1, true, 9),
-        Err(ConfigError::ConfigChangeInProgress)
-    );
-
-    // 4. After commit, another change succeeds
-    let change2 = manager.remove_server(2, 1, true, 10).unwrap();
-    assert_eq!(change2, ConfigurationChange::RemoveServer(2));
+    // Assert
+    assert_eq!(result, Err(ConfigError::ConfigChangeInProgress));
+    assert!(change2.is_ok());
+    assert_eq!(change2.unwrap(), ConfigurationChange::RemoveServer(2));
 }
 
 #[test]
 fn test_apply_changes_add_server() {
+    // Arrange
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     let config = Configuration::new(members);
     let mut manager =
         ConfigChangeManager::<InMemoryNodeCollection, InMemoryMapCollection>::new(config);
-
     let mut changes = InMemoryConfigChangeCollection::new();
     let _ = changes.push(1, ConfigurationChange::AddServer(2));
-
     let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
     let mut current_role = NodeState::Leader;
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
 
+    // Act
     manager.apply_changes(
         changes,
         1,
@@ -424,6 +420,7 @@ fn test_apply_changes_add_server() {
         &mut current_role,
     );
 
+    // Assert
     assert!(manager.config().contains(2));
     assert_eq!(replication.next_index().get(2), Some(6));
     assert_eq!(replication.match_index().get(2), Some(0));
@@ -431,20 +428,20 @@ fn test_apply_changes_add_server() {
 
 #[test]
 fn test_apply_changes_remove_server() {
+    // Arrange
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
     let config = Configuration::new(members);
     let mut manager =
         ConfigChangeManager::<InMemoryNodeCollection, InMemoryMapCollection>::new(config);
-
     let mut changes = InMemoryConfigChangeCollection::new();
     let _ = changes.push(1, ConfigurationChange::RemoveServer(2));
-
     let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
     let mut current_role = NodeState::Leader;
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
 
+    // Act
     manager.apply_changes(
         changes,
         1,
@@ -454,26 +451,27 @@ fn test_apply_changes_remove_server() {
         &mut current_role,
     );
 
+    // Assert
     assert!(!manager.config().contains(2));
     assert!(replication.next_index().get(2).is_none());
 }
 
 #[test]
 fn test_apply_changes_remove_self() {
+    // Arrange
     let mut members = InMemoryNodeCollection::new();
     members.push(1).unwrap();
     members.push(2).unwrap();
     let config = Configuration::new(members);
     let mut manager =
         ConfigChangeManager::<InMemoryNodeCollection, InMemoryMapCollection>::new(config);
-
     let mut changes = InMemoryConfigChangeCollection::new();
     let _ = changes.push(1, ConfigurationChange::RemoveServer(1));
-
     let mut observer = NullObserver::<String, InMemoryLogEntryCollection>::new();
     let mut current_role = NodeState::Leader;
     let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
 
+    // Act
     manager.apply_changes(
         changes,
         1,
@@ -483,6 +481,7 @@ fn test_apply_changes_remove_self() {
         &mut current_role,
     );
 
+    // Assert
     assert!(!manager.config().contains(1));
     assert_eq!(current_role, NodeState::Follower);
 }

@@ -12,6 +12,7 @@ use raft_core::{
     state_machine::StateMachine,
     storage::Storage,
 };
+
 use raft_test_utils::{
     frozen_timer::FrozenTimer, in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
@@ -19,26 +20,20 @@ use raft_test_utils::{
     in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
 };
 
-// ============================================================
-// start_election tests
-// ============================================================
-
 #[test]
 fn test_liveness_start_election_increments_term() {
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     let mut current_term = 1;
     let mut role = NodeState::Follower;
 
-    let _msg: RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection> = election
-        .start_election(
-            1, // node_id
-            &mut current_term,
-            &mut storage,
-            &mut role,
-        );
+    // Act
+    let _msg: RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection> =
+        election.start_election(1, &mut current_term, &mut storage, &mut role);
 
+    // Assert
     assert_eq!(current_term, 2);
     assert_eq!(role, NodeState::Candidate);
     assert_eq!(storage.current_term(), 2);
@@ -46,12 +41,14 @@ fn test_liveness_start_election_increments_term() {
 
 #[test]
 fn test_safety_start_election_votes_for_self() {
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     let mut current_term = 1;
     let mut role = NodeState::Follower;
 
+    // Act
     election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
@@ -59,11 +56,13 @@ fn test_safety_start_election_votes_for_self() {
         &mut role,
     );
 
+    // Assert
     assert_eq!(storage.voted_for(), Some(1));
 }
 
 #[test]
 fn test_liveness_start_election_generates_correct_message() {
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
@@ -71,6 +70,7 @@ fn test_liveness_start_election_generates_correct_message() {
     let mut current_term = 5;
     let mut role = NodeState::Follower;
 
+    // Act
     let msg = election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         42,
         &mut current_term,
@@ -78,6 +78,7 @@ fn test_liveness_start_election_generates_correct_message() {
         &mut role,
     );
 
+    // Assert
     match msg {
         RaftMsg::RequestVote {
             term,
@@ -94,27 +95,26 @@ fn test_liveness_start_election_generates_correct_message() {
     }
 }
 
-// ============================================================
-// handle_vote_request tests
-// ============================================================
-
 #[test]
 fn test_safety_grant_vote_to_first_candidate() {
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
     let mut current_term = 1;
 
+    // Act
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        1, // term
-        5, // candidate_id
-        0, // last_log_index
-        0, // last_log_term
+        1,
+        5,
+        0,
+        0,
         &mut current_term,
         &mut storage,
     );
 
+    // Assert
     match response {
         RaftMsg::RequestVoteResponse { term, vote_granted } => {
             assert_eq!(term, 1);
@@ -122,12 +122,12 @@ fn test_safety_grant_vote_to_first_candidate() {
         }
         _ => panic!("Expected RequestVoteResponse"),
     }
-
     assert_eq!(storage.voted_for(), Some(5));
 }
 
 #[test]
 fn test_safety_reject_when_already_voted() {
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
@@ -135,18 +135,20 @@ fn test_safety_reject_when_already_voted() {
     storage.set_voted_for(Some(3));
     let mut current_term = 1;
 
+    // Act
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        1, // term
-        5, // different candidate_id
+        1,
+        5,
         0,
         0,
         &mut current_term,
         &mut storage,
     );
 
+    // Assert
     match response {
         RaftMsg::RequestVoteResponse { vote_granted, .. } => {
-            assert!(!vote_granted,);
+            assert!(!vote_granted);
         }
         _ => panic!("Expected RequestVoteResponse"),
     }
@@ -154,6 +156,7 @@ fn test_safety_reject_when_already_voted() {
 
 #[test]
 fn test_safety_grant_vote_to_same_candidate_twice() {
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
@@ -161,18 +164,20 @@ fn test_safety_grant_vote_to_same_candidate_twice() {
     storage.set_voted_for(Some(5));
     let mut current_term = 1;
 
+    // Act
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        1, // term
-        5, // same candidate_id
+        1,
+        5,
         0,
         0,
         &mut current_term,
         &mut storage,
     );
 
+    // Assert
     match response {
         RaftMsg::RequestVoteResponse { vote_granted, .. } => {
-            assert!(vote_granted, "Should grant vote to same candidate again");
+            assert!(vote_granted);
         }
         _ => panic!("Expected RequestVoteResponse"),
     }
@@ -180,45 +185,41 @@ fn test_safety_grant_vote_to_same_candidate_twice() {
 
 #[test]
 fn test_safety_reject_less_up_to_date_candidate() {
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
-
-    // Local node has 3 entries in term 2
     storage.append_entries(&[
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            entry_type: raft_core::log_entry::EntryType::Command("cmd1".to_string()),
+            entry_type: EntryType::Command("cmd1".to_string()),
         },
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 2,
-            entry_type: raft_core::log_entry::EntryType::Command("cmd2".to_string()),
+            entry_type: EntryType::Command("cmd2".to_string()),
         },
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 2,
-            entry_type: raft_core::log_entry::EntryType::Command("cmd3".to_string()),
+            entry_type: EntryType::Command("cmd3".to_string()),
         },
     ]);
-
     storage.set_current_term(2);
     let mut current_term = 2;
 
-    // Candidate only has 2 entries in term 2
+    // Act
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        2, // term
-        5, // candidate_id
-        2, // last_log_index (less than our 3)
-        2, // last_log_term
+        2,
+        5,
+        2,
+        2,
         &mut current_term,
         &mut storage,
     );
 
+    // Assert
     match response {
         RaftMsg::RequestVoteResponse { vote_granted, .. } => {
-            assert!(
-                !vote_granted,
-                "Should reject candidate with less up-to-date log"
-            );
+            assert!(!vote_granted);
         }
         _ => panic!("Expected RequestVoteResponse"),
     }
@@ -226,10 +227,10 @@ fn test_safety_reject_less_up_to_date_candidate() {
 
 #[test]
 fn test_safety_grant_to_equally_up_to_date_candidate() {
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
-
     storage.append_entries(&[
         LogEntry {
             term: 1,
@@ -240,19 +241,20 @@ fn test_safety_grant_to_equally_up_to_date_candidate() {
             entry_type: EntryType::Command("cmd2".to_string()),
         },
     ]);
-
     storage.set_current_term(2);
     let mut current_term = 2;
 
+    // Act
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         2,
         5,
-        2, // same last_log_index
-        2, // same last_log_term
+        2,
+        2,
         &mut current_term,
         &mut storage,
     );
 
+    // Assert
     match response {
         RaftMsg::RequestVoteResponse { vote_granted, .. } => {
             assert!(
@@ -266,6 +268,7 @@ fn test_safety_grant_to_equally_up_to_date_candidate() {
 
 #[test]
 fn test_safety_update_term_from_higher_request() {
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
@@ -273,8 +276,9 @@ fn test_safety_update_term_from_higher_request() {
     storage.set_voted_for(Some(3));
     let mut current_term = 1;
 
+    // Act
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        5, // higher term
+        5,
         7,
         0,
         0,
@@ -282,6 +286,7 @@ fn test_safety_update_term_from_higher_request() {
         &mut storage,
     );
 
+    // Assert
     assert_eq!(current_term, 5);
     assert_eq!(storage.current_term(), 5);
     match response {
@@ -295,14 +300,16 @@ fn test_safety_update_term_from_higher_request() {
 
 #[test]
 fn test_safety_reject_stale_vote_request() {
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(5);
     let mut current_term = 5;
 
+    // Act
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        3, // stale term
+        3,
         7,
         0,
         0,
@@ -310,6 +317,7 @@ fn test_safety_reject_stale_vote_request() {
         &mut storage,
     );
 
+    // Assert
     match response {
         RaftMsg::RequestVoteResponse { term, vote_granted } => {
             assert_eq!(term, 5);
@@ -320,15 +328,16 @@ fn test_safety_reject_stale_vote_request() {
 }
 #[test]
 fn test_handle_pre_vote_request_log_not_up_to_date() {
+    // Arrange
     let timer_service = FrozenTimer;
     let mut manager = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(timer_service);
-
     let mut storage = InMemoryStorage::new();
     storage.append_entries(&[LogEntry {
         entry_type: EntryType::Command("cmd".to_string()),
         term: 2,
     }]);
 
+    // Act
     let msg = manager.handle_pre_vote_request::<
         String,
         InMemoryLogEntryCollection,
@@ -336,6 +345,7 @@ fn test_handle_pre_vote_request_log_not_up_to_date() {
         InMemoryStorage,
     >(1, 1, 1, 1, &storage);
 
+    // Assert
     match msg {
         RaftMsg::PreVoteResponse { term, vote_granted } => {
             assert_eq!(term, 1);
@@ -344,277 +354,178 @@ fn test_handle_pre_vote_request_log_not_up_to_date() {
         _ => panic!("Expected PreVoteResponse"),
     }
 }
-// ============================================================
-// handle_vote_response tests
-// ============================================================
 
 #[test]
 fn test_liveness_become_leader_on_majority() {
+    // Arrange
     let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(2);
     let mut current_term = 2;
     let mut role = NodeState::Candidate;
-
-    // Start election (votes for self)
     election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
         &mut role,
     );
-
-    // Cluster of 3 nodes: need 2 votes (self + 1 peer)
     let mut peers = InMemoryNodeCollection::new();
     peers.push(2).unwrap();
     peers.push(3).unwrap();
-
     let config = Configuration::new(peers.clone());
 
-    // Receive vote from node 2
-    let became_leader = election.handle_vote_response(
-        2,    // from
-        3,    // term
-        true, // vote_granted
-        &current_term,
-        &role,
-        &config,
-    );
+    // Act
+    let became_leader = election.handle_vote_response(2, 3, true, &current_term, &role, &config);
 
-    if became_leader {
-        role = NodeState::Leader;
-    }
-
-    assert!(
-        became_leader,
-        "Should become leader with majority (2/3 votes)"
-    );
-    assert_eq!(role, NodeState::Leader);
+    // Assert
+    assert!(became_leader);
 }
 
 #[test]
 fn test_liveness_stay_candidate_without_majority() {
+    // Arrange
     let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(2);
     let mut current_term = 2;
     let mut role = NodeState::Candidate;
-
     election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
         &mut role,
     );
-
-    // Cluster of 5 nodes: need 3 votes
     let mut peers = InMemoryNodeCollection::new();
     for i in 2..=5 {
         peers.push(i).unwrap();
     }
     let config = Configuration::new(peers.clone());
 
-    // Receive only 1 vote (self + 1 = 2/5)
+    // Act
     let became_leader = election.handle_vote_response(2, 3, true, &current_term, &role, &config);
 
-    assert!(!became_leader, "Should stay candidate without majority");
+    // Assert
+    assert!(!became_leader);
     assert_eq!(role, NodeState::Candidate);
 }
 
 #[test]
 fn test_liveness_handle_vote_rejection() {
+    // Arrange
     let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(2);
     let mut current_term = 2;
     let mut role = NodeState::Candidate;
-
     election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
         &mut role,
     );
-
     let mut peers = InMemoryNodeCollection::new();
     peers.push(2).unwrap();
     let config = Configuration::new(peers.clone());
 
-    // Receive rejection
-    let became_leader = election.handle_vote_response(
-        2,
-        3,
-        false, // vote_granted = false
-        &current_term,
-        &role,
-        &config,
-    );
+    // Act
+    let became_leader = election.handle_vote_response(2, 3, false, &current_term, &role, &config);
 
+    // Assert
     assert!(!became_leader);
     assert_eq!(role, NodeState::Candidate);
 }
 
 #[test]
 fn test_safety_ignore_stale_vote_response() {
+    // Arrange
     let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(5);
     let mut current_term = 5;
     let mut role = NodeState::Candidate;
-
     election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
         &mut role,
     );
-
     let mut peers = InMemoryNodeCollection::new();
     peers.push(2).unwrap();
     let config = Configuration::new(peers.clone());
 
-    // Receive vote from old term
-    let became_leader = election.handle_vote_response(
-        2,
-        3, // old term
-        true,
-        &current_term,
-        &role,
-        &config,
-    );
+    // Act
+    let became_leader = election.handle_vote_response(2, 3, true, &current_term, &role, &config);
 
-    assert!(!became_leader, "Should ignore stale vote");
+    // Assert
+    assert!(!became_leader);
 }
-
-#[test]
-fn test_safety_step_down_on_higher_term_in_response() {
-    let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
-    let mut storage = InMemoryStorage::new();
-    storage.set_current_term(2);
-    let mut current_term = 2;
-    let mut role = NodeState::Candidate;
-
-    election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        1,
-        &mut current_term,
-        &mut storage,
-        &mut role,
-    );
-
-    let peers = InMemoryNodeCollection::new();
-    let config = Configuration::new(peers.clone());
-
-    // Simulate what RaftNode does: detect higher term and step down before processing
-    let response_term = 10;
-    if response_term > current_term {
-        current_term = response_term;
-        role = NodeState::Follower;
-    }
-
-    // Now call handle_vote_response (but since we're follower now, it won't do anything)
-    election.handle_vote_response(2, response_term, false, &current_term, &role, &config);
-
-    assert_eq!(current_term, 10);
-    assert_eq!(role, NodeState::Follower, "Should step down on higher term");
-}
-
-// ============================================================
-// Edge cases
-// ============================================================
 
 #[test]
 fn test_liveness_majority_calculation_even_cluster() {
+    // Arrange
     let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
     let mut current_term = 1;
     let mut role = NodeState::Candidate;
-
     election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
         &mut role,
     );
-
-    // Cluster of 4 nodes: need 3 votes (majority of 4 is 3)
     let mut peers = InMemoryNodeCollection::new();
     peers.push(2).unwrap();
     peers.push(3).unwrap();
     peers.push(4).unwrap();
     let config = Configuration::new(peers.clone());
 
-    // Get 1 vote (self + 1 = 2/4) - not enough
+    // Act
     election.handle_vote_response(2, 2, true, &current_term, &role, &config);
-    assert_eq!(role, NodeState::Candidate);
-
-    // Get 2nd vote (self + 2 = 3/4) - should become leader
     let became_leader = election.handle_vote_response(3, 2, true, &current_term, &role, &config);
-    if became_leader {
-        role = NodeState::Leader;
-    }
+
+    // Assert
     assert!(became_leader);
-    assert_eq!(role, NodeState::Leader);
 }
 
 #[test]
 fn test_liveness_single_node_cluster() {
+    // Arrange
     let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(1);
     let mut current_term = 1;
     let mut role = NodeState::Candidate;
-
     election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
         &mut role,
     );
-
-    // Single-node cluster (0 peers)
     let peers = InMemoryNodeCollection::new();
     let config = Configuration::new(peers.clone());
 
-    // In a single-node cluster, the node should immediately have majority
-    // after voting for itself (1 vote out of 1 total nodes)
-    // Simulate checking if we can become leader
-    let became_leader = election.handle_vote_response(
-        1, // from self (doesn't matter, won't be counted again)
-        current_term,
-        true,
-        &current_term,
-        &role,
-        &config,
-    );
-
+    // Act
+    let became_leader =
+        election.handle_vote_response(1, current_term, true, &current_term, &role, &config);
     if became_leader {
         role = NodeState::Leader;
     }
 
-    assert!(
-        became_leader,
-        "Single-node cluster should immediately become leader"
-    );
+    // Assert
+    assert!(became_leader);
     assert_eq!(role, NodeState::Leader);
 }
 
-// ============================================================
-// Snapshot / Log Compaction Tests
-// ============================================================
-
 #[test]
 fn test_liveness_start_election_with_compacted_log() {
-    // Test: Candidate with compacted log starts election
-    // Expected: RequestVote should use snapshot metadata for last_log_index/term
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(3);
     let mut current_term = 3;
     let mut role = NodeState::Follower;
-
-    // Create log with entries 1-15
     let entries: Vec<LogEntry<String>> = (1..=15)
         .map(|i| LogEntry {
             term: 2,
@@ -622,14 +533,11 @@ fn test_liveness_start_election_with_compacted_log() {
         })
         .collect();
     storage.append_entries(&entries);
-
-    // Create snapshot at index 10, term 2
     let mut state_machine = InMemoryStateMachine::new();
     for i in 1..=10 {
         state_machine.apply(&format!("cmd{}", i));
     }
     let snapshot_data = state_machine.create_snapshot();
-
     let snapshot = Snapshot {
         metadata: SnapshotMetadata {
             last_included_index: 10,
@@ -638,19 +546,10 @@ fn test_liveness_start_election_with_compacted_log() {
         data: snapshot_data,
     };
     storage.save_snapshot(snapshot);
-
-    // Compact the log - discard entries 1-10
     storage.discard_entries_before(11);
-
-    // Now log has entries 11-15, but if we discard those too...
     storage.discard_entries_before(16);
 
-    // Log is now empty, only snapshot remains
-    assert_eq!(storage.first_log_index(), 16);
-    assert_eq!(storage.last_log_index(), 15); // Returns snapshot point
-    assert_eq!(storage.last_log_term(), 2); // Returns snapshot term
-
-    // Start election - should use snapshot metadata
+    // Act
     let msg = election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
@@ -658,6 +557,10 @@ fn test_liveness_start_election_with_compacted_log() {
         &mut role,
     );
 
+    // Assert
+    assert_eq!(storage.first_log_index(), 16);
+    assert_eq!(storage.last_log_index(), 15);
+    assert_eq!(storage.last_log_term(), 2);
     match msg {
         RaftMsg::RequestVote {
             term,
@@ -667,11 +570,8 @@ fn test_liveness_start_election_with_compacted_log() {
         } => {
             assert_eq!(term, 4);
             assert_eq!(candidate_id, 1);
-            assert_eq!(
-                last_log_index, 15,
-                "Should use snapshot's last_included_index"
-            );
-            assert_eq!(last_log_term, 2, "Should use snapshot's last_included_term");
+            assert_eq!(last_log_index, 15);
+            assert_eq!(last_log_term, 2);
         }
         _ => panic!("Expected RequestVote message"),
     }
@@ -679,15 +579,12 @@ fn test_liveness_start_election_with_compacted_log() {
 
 #[test]
 fn test_safety_grant_vote_with_compacted_log() {
-    // Test: Voter with compacted log evaluates candidate
-    // Expected: Should use snapshot metadata for up-to-date check
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(3);
     let mut current_term = 3;
-
-    // Voter has entries 1-20, creates snapshot at 15, compacts everything
     let entries: Vec<LogEntry<String>> = (1..=20)
         .map(|i| LogEntry {
             term: 2,
@@ -696,17 +593,11 @@ fn test_safety_grant_vote_with_compacted_log() {
         .collect();
     storage.append_entries(&entries);
 
-    // Create snapshot at index 15, term 2
-    use raft_core::snapshot::{Snapshot, SnapshotMetadata};
-    use raft_core::state_machine::StateMachine;
-    use raft_test_utils::in_memory_state_machine::InMemoryStateMachine;
-
     let mut state_machine = InMemoryStateMachine::new();
     for i in 1..=15 {
         state_machine.apply(&format!("cmd{}", i));
     }
     let snapshot_data = state_machine.create_snapshot();
-
     let snapshot = Snapshot {
         metadata: SnapshotMetadata {
             last_included_index: 15,
@@ -715,40 +606,26 @@ fn test_safety_grant_vote_with_compacted_log() {
         data: snapshot_data,
     };
     storage.save_snapshot(snapshot);
-
-    // Compact all entries up to and including index 20 (all entries)
-    // discard_entries_before(21) means discard entries with index < 21, i.e., all of them
     storage.discard_entries_before(21);
-
-    // Voter's log should be empty after compaction
-    // When log is empty, last_log_index() returns first_index - 1
-    // first_index should be 21 after discarding, so last_log_index = 20
-    // BUT, when log is empty and there's a snapshot, last_log_term returns snapshot term
-    // Actually, let me check the actual behavior
     let actual_last_index = storage.last_log_index();
     let actual_last_term = storage.last_log_term();
 
-    // When log is empty, last_log_index returns first_index - 1 = 21 - 1 = 20
-    // When log is empty with snapshot, last_log_term returns snapshot term
-    assert_eq!(actual_last_index, 20, "last_log_index when log empty");
-    assert_eq!(actual_last_term, 2, "last_log_term from snapshot"); // From snapshot
-
-    // Candidate has log up to index 18, term 2 (less up-to-date than our 20)
+    // Act
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        3,  // term
-        5,  // candidate_id
-        18, // last_log_index (behind our 20)
-        2,  // last_log_term (same term)
+        3,
+        5,
+        18,
+        2,
         &mut current_term,
         &mut storage,
     );
 
+    // Assert
+    assert_eq!(actual_last_index, 20, "last_log_index when log empty");
+    assert_eq!(actual_last_term, 2, "last_log_term from snapshot");
     match response {
         RaftMsg::RequestVoteResponse { vote_granted, .. } => {
-            assert!(
-                !vote_granted,
-                "Should reject candidate - we have more recent log (index 20 vs 18)"
-            );
+            assert!(!vote_granted);
         }
         _ => panic!("Expected RequestVoteResponse"),
     }
@@ -756,16 +633,12 @@ fn test_safety_grant_vote_with_compacted_log() {
 
 #[test]
 fn test_safety_reject_candidate_with_older_log_than_snapshot() {
-    // Test: Voter with compacted log rejects less up-to-date candidate
-    // Expected: Candidate with log older than voter's snapshot should be rejected
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(3);
     let mut current_term = 3;
-
-    // Voter has snapshot at index 15, term 2
-    use raft_core::log_entry::LogEntry;
     let entries: Vec<LogEntry<String>> = (1..=15)
         .map(|i| LogEntry {
             term: 2,
@@ -773,17 +646,11 @@ fn test_safety_reject_candidate_with_older_log_than_snapshot() {
         })
         .collect();
     storage.append_entries(&entries);
-
-    use raft_core::snapshot::{Snapshot, SnapshotMetadata};
-    use raft_core::state_machine::StateMachine;
-    use raft_test_utils::in_memory_state_machine::InMemoryStateMachine;
-
     let mut state_machine = InMemoryStateMachine::new();
     for i in 1..=15 {
         state_machine.apply(&format!("cmd{}", i));
     }
     let snapshot_data = state_machine.create_snapshot();
-
     let snapshot = Snapshot {
         metadata: SnapshotMetadata {
             last_included_index: 15,
@@ -792,28 +659,24 @@ fn test_safety_reject_candidate_with_older_log_than_snapshot() {
         data: snapshot_data,
     };
     storage.save_snapshot(snapshot);
-
     storage.discard_entries_before(16);
 
-    assert_eq!(storage.last_log_index(), 15);
-    assert_eq!(storage.last_log_term(), 2);
-
-    // Candidate only has log up to index 10, term 2 (less up-to-date)
+    // Act
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        3,  // term
-        5,  // candidate_id
-        10, // last_log_index (behind our snapshot)
-        2,  // last_log_term
+        3,
+        5,
+        10,
+        2,
         &mut current_term,
         &mut storage,
     );
 
+    // Assert
+    assert_eq!(storage.last_log_index(), 15);
+    assert_eq!(storage.last_log_term(), 2);
     match response {
         RaftMsg::RequestVoteResponse { vote_granted, .. } => {
-            assert!(
-                !vote_granted,
-                "Should reject candidate with log older than our snapshot"
-            );
+            assert!(!vote_granted);
         }
         _ => panic!("Expected RequestVoteResponse"),
     }
@@ -821,15 +684,12 @@ fn test_safety_reject_candidate_with_older_log_than_snapshot() {
 
 #[test]
 fn test_safety_grant_vote_with_higher_term_than_snapshot() {
-    // Test: Candidate with higher term but shorter log should win
-    // Expected: Term comparison takes precedence over log length
+    // Arrange
     let mut election: ElectionManager<InMemoryNodeCollection, FrozenTimer> =
         ElectionManager::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(3);
     let mut current_term = 3;
-
-    // Voter has snapshot at index 15, term 2
     let entries: Vec<LogEntry<String>> = (1..=15)
         .map(|i| LogEntry {
             term: 2,
@@ -837,13 +697,11 @@ fn test_safety_grant_vote_with_higher_term_than_snapshot() {
         })
         .collect();
     storage.append_entries(&entries);
-
     let mut state_machine = InMemoryStateMachine::new();
     for i in 1..=15 {
         state_machine.apply(&format!("cmd{}", i));
     }
     let snapshot_data = state_machine.create_snapshot();
-
     let snapshot = Snapshot {
         metadata: SnapshotMetadata {
             last_included_index: 15,
@@ -852,29 +710,24 @@ fn test_safety_grant_vote_with_higher_term_than_snapshot() {
         data: snapshot_data,
     };
     storage.save_snapshot(snapshot);
-
     storage.discard_entries_before(16);
 
-    // Voter: index 15, term 2
-    assert_eq!(storage.last_log_index(), 15);
-    assert_eq!(storage.last_log_term(), 2);
-
-    // Candidate: index 10, term 3 (higher term wins despite shorter log)
+    // Act
     let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        3,  // term
-        5,  // candidate_id
-        10, // last_log_index (shorter)
-        3,  // last_log_term (higher term!)
+        3,
+        5,
+        10,
+        3,
         &mut current_term,
         &mut storage,
     );
 
+    // Assert
+    assert_eq!(storage.last_log_index(), 15);
+    assert_eq!(storage.last_log_term(), 2);
     match response {
         RaftMsg::RequestVoteResponse { vote_granted, .. } => {
-            assert!(
-                vote_granted,
-                "Should grant vote - candidate has higher last_log_term"
-            );
+            assert!(vote_granted);
         }
         _ => panic!("Expected RequestVoteResponse"),
     }
@@ -882,24 +735,22 @@ fn test_safety_grant_vote_with_higher_term_than_snapshot() {
 
 #[test]
 fn test_liveness_pre_vote_rejection_with_stale_term() {
+    // Arrange
     let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(5);
     let current_term = 5;
     let _role = NodeState::Follower;
 
-    // PreVote request with stale term should be rejected
+    // Act
     let response = election.handle_pre_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        3,
-                0,
-        0,
-              current_term,
-        &storage,
+        3, 0, 0, current_term, &storage,
     );
 
+    // Assert
     match response {
         RaftMsg::PreVoteResponse { vote_granted, .. } => {
-            assert!(!vote_granted, "Should reject pre-vote with stale term");
+            assert!(!vote_granted);
         }
         _ => panic!("Expected PreVoteResponse"),
     }
@@ -907,31 +758,26 @@ fn test_liveness_pre_vote_rejection_with_stale_term() {
 
 #[test]
 fn test_safety_pre_vote_response_from_minority_does_not_start_election() {
+    // Arrange
     let mut election = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(FrozenTimer);
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(2);
     let current_term = 2;
-
-    // Start pre-vote
     election.start_pre_vote::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         current_term,
         &storage,
     );
-
-    // Create config with 5 nodes (need 3 responses to proceed)
     let mut peers = InMemoryNodeCollection::new();
     for i in 2..=5 {
         peers.push(i).unwrap();
     }
     let config = Configuration::new(peers);
 
-    // Receive only 1 positive response (not enough)
+    // Act
     let should_start_election = election.handle_pre_vote_response(2, true, &config);
 
-    assert!(
-        !should_start_election,
-        "Should not start election without pre-vote majority"
-    );
-    assert_eq!(current_term, 2, "Term should not change");
+    // Assert
+    assert!(!should_start_election);
+    assert_eq!(current_term, 2);
 }

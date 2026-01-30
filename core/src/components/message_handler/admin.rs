@@ -51,7 +51,6 @@ where
 
     let index = submit_config_change(ctx, change).map_err(|_| ConfigError::NotLeader)?;
 
-
     ctx.config_manager.track_pending_change(index);
 
     Ok(index)
