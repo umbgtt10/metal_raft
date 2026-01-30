@@ -740,7 +740,6 @@ fn test_liveness_pre_vote_rejection_with_stale_term() {
     let mut storage = InMemoryStorage::new();
     storage.set_current_term(5);
     let current_term = 5;
-    let _role = NodeState::Follower;
 
     // Act
     let response = election.handle_pre_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(

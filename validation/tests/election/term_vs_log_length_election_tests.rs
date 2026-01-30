@@ -23,7 +23,7 @@ fn test_safety_higher_term_beats_longer_log() {
             term: 1,
             entry_type: EntryType::Command("1".to_string()),
         },
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 2,
             entry_type: EntryType::Command("2".to_string()),
         },
@@ -55,8 +55,9 @@ fn test_safety_higher_term_beats_longer_log() {
         },
     ]);
     cluster.add_node_with_storage(2, storage2);
-
     cluster.connect_peers();
+
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
@@ -105,6 +106,8 @@ fn test_safety_older_longer_log_loses_to_newer_shorter() {
     ]);
     cluster.add_node_with_storage(2, storage2);
     cluster.connect_peers();
+
+    // Act
     cluster
         .get_node_mut(2)
         .on_event(Event::TimerFired(TimerKind::Election));
