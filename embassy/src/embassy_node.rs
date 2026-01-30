@@ -55,7 +55,6 @@ type EmbassyRaftNode<S> = RaftNode<
     EmbassyClock,
 >;
 
-/// Embassy Raft node - encapsulates all node state and behavior
 pub struct EmbassyNode<
     T: AsyncTransport,
     S: Storage<
@@ -85,7 +84,6 @@ impl<
             > + Clone,
     > EmbassyNode<T, S>
 {
-    /// Create a new Embassy Raft node
     pub fn new(
         node_id: NodeId,
         storage: S,
@@ -99,7 +97,6 @@ impl<
         let state_machine = EmbassyStateMachine::default();
         let led = LedState::new(node_id as u8);
 
-        // Create peer collection
         let mut peers = EmbassyNodeCollection::new();
         for id in 1..=5 {
             if id != node_id {
@@ -107,16 +104,10 @@ impl<
             }
         }
 
-        // Create election manager with timer
         let election = ElectionManager::new(timer);
-
-        // Create log replication manager
         let replication = LogReplicationManager::<EmbassyMapCollection>::new();
-
-        // Create observer with configured level
         let observer = EmbassyObserver::<String, EmbassyLogEntryCollection>::new(observer_level);
 
-        // Build RaftNode using builder pattern
         let raft_node = RaftNodeBuilder::new(node_id, storage, state_machine)
             .with_election(election)
             .with_replication(replication)
@@ -135,17 +126,13 @@ impl<
         }
     }
 
-    /// Run the node's main event loop (concurrent event-driven)
     pub async fn run(mut self, cancel: CancellationToken) {
         self.led.update(self.raft_node.role());
 
         loop {
-            // Create futures for all event sources
-            let cancel_fut = cancel.wait();
-            let client_fut = self.client_rx.receive();
-
-            // Timer future - polls for expired timers
-            let timer_fut = async {
+            let cancel_future = cancel.wait();
+            let client_future = self.client_rx.receive();
+            let timer_future = async {
                 loop {
                     let timer_service = self.raft_node.timer_service();
                     let expired_timers = timer_service.check_expired();
@@ -158,55 +145,45 @@ impl<
                 }
             };
 
-            let transport_fut = self.async_transport.recv();
+            let transport_future = self.async_transport.recv();
 
-            let event = select4(cancel_fut, client_fut, timer_fut, transport_fut).await;
+            let event = select4(cancel_future, client_future, timer_future, transport_future).await;
 
             match event {
                 Either4::First(_) => {
-                    // Shutdown signal received
                     info!("Node {} shutting down gracefully", self.node_id);
                     break;
                 }
                 Either4::Second(request) => {
-                    // Client request received
                     self.handle_client_request(request).await;
                 }
                 Either4::Third(timer_kind) => {
-                    // Timer expired
                     self.raft_node.on_event(Event::TimerFired(timer_kind));
                     self.led.update(self.raft_node.role());
                 }
                 Either4::Fourth((from, msg)) => {
-                    // Message received from peer
                     self.raft_node.on_event(Event::Message { from, msg });
                     self.led.update(self.raft_node.role());
                 }
             }
 
-            // After any event, drain outbox and send messages
             self.drain_and_send_messages().await;
-
-            // Check for committed requests
             self.process_committed_requests().await;
         }
 
         info!("Node {} shutdown complete", self.node_id);
     }
 
-    /// Drain outbox and send all messages
     async fn drain_and_send_messages(&mut self) {
         for (target, msg) in self.transport.drain_outbox() {
             self.async_transport.send(target, msg).await;
         }
     }
 
-    /// Process requests that have been committed
     async fn process_committed_requests(&mut self) {
         let commit_index = self.raft_node.commit_index();
         let mut completed = Vec::new();
 
-        // Identify completed requests
         for (index, _) in self.pending_commands.iter() {
             if *index <= commit_index {
                 completed.push(*index);
@@ -216,16 +193,13 @@ impl<
             }
         }
 
-        // Notify and remove
         for index in completed {
             if let Some(tx) = self.pending_commands.remove(&index) {
-                // Ignore result if receiver dropped
                 let _ = tx.try_send(Ok(()));
             }
         }
     }
 
-    /// Handle client request
     async fn handle_client_request(&mut self, request: ClientRequest) {
         match request {
             ClientRequest::Write {
@@ -239,8 +213,6 @@ impl<
                         self.pending_commands.insert(index, response_tx);
                     }
                     Err(ClientError::NotLeader) => {
-                        // Forwarding logic
-                        // If we know the leader, forward logic
                         let leader_id = *CURRENT_LEADER.lock().await;
 
                         if let Some(leader) = leader_id {
@@ -252,14 +224,12 @@ impl<
                                 },
                             );
                         } else {
-                            // If we don't know the leader, inform client of failure
                             let _ = response_tx.try_send(Err(ClusterError::NoLeader));
                         }
                     }
                 }
             }
             ClientRequest::Read { key, response_tx } => {
-                // Try to serve linearizable read from this node
                 match self.raft_node.read_linearizable(&key) {
                     Ok(Some(value)) => {
                         let _ = response_tx.try_send(Ok(Some(String::from(value))));
@@ -268,7 +238,6 @@ impl<
                         let _ = response_tx.try_send(Ok(None));
                     }
                     Err(ReadError::NotLeaderOrNoLease) => {
-                        // Cannot serve read - forward to leader
                         let leader_id = *CURRENT_LEADER.lock().await;
 
                         if let Some(leader) = leader_id {
@@ -276,7 +245,6 @@ impl<
                                 let _ = CLIENT_CHANNELS[leader as usize - 1]
                                     .try_send(ClientRequest::Read { key, response_tx });
                             } else {
-                                // We are leader but can't serve reads (no valid lease)
                                 let _ = response_tx.try_send(Err(ClusterError::NoLeader));
                             }
                         } else {
