@@ -8,7 +8,7 @@ The initial inspiration and methodological foundation for this work comes from t
 
 ## Objectives
 
-  1) Implement Raft in a technology-agnostic core ([docs/adrs/ADS-R1%20Technology-Agnostic%20Algorithmic%20Core.md](docs/adrs/ADR-R1%20Technology-Agnostic%20Algorithmic%20Core.md))
+  1) Implement Raft in a technology-agnostic core ([docs/adrs/ADR-R1%20Technology-Agnostic%20Algorithmic%20Core.md](docs/adrs/ADR-R1%20Technology-Agnostic%20Algorithmic%20Core.md))
   2) Implement Raft with a generic-only architecture (no dynamic dispatching) and show the limits of this approach ([docs/adrs/ADR-R5 Monomorphization-First Architecture.md](docs/adrs/ADR-R5%20Monomorphization-First%20Architecture.md))
   3) Validate correctness through a deterministic, adversarial test harness ([validation/README.md](validation/README.md))
   4) Realize Raft on `no_std + Embassy` for embedded targets ([embassy/README.md](embassy/README.md))

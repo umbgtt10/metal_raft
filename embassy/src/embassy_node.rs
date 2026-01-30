@@ -251,7 +251,7 @@ impl<
                 }
             }
             ClientRequest::GetLeader => {
-                // TODO: Respond with current leader
+                todo!("Not implemented yet");
             }
         }
     }
