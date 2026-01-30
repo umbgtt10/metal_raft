@@ -4,8 +4,6 @@
 
 This package (`raft-validation`) provides comprehensive testing infrastructure for the MetalRaft consensus implementation. The validation strategy follows **ADR-R3: Deterministic, Imperative Test Harness** and validates correctness through both deterministic simulation and time-based testing.
 
-**Test Coverage: 232 tests (156 core unit + 76 validation integration)**
-
 ## Test Infrastructure
 
 ### Two Testing Modes
@@ -39,9 +37,9 @@ Tests are **executable specifications** of Raft behavior under specific conditio
 
 ## Test Organization
 
-### Core Unit Tests (156 tests in `core/tests/`)
+### Core Unit Tests (`core/tests/`)
 
-**Component Tests (136 tests):**
+**Component Tests:**
 - [election_manager_tests.rs](../core/tests/election_manager_tests.rs) - 24 tests
 - [log_replication_manager_tests.rs](../core/tests/log_replication_manager_tests.rs) - 40 tests
 - [snapshot_manager_tests.rs](../core/tests/snapshot_manager_tests.rs) - 21 tests
@@ -50,15 +48,15 @@ Tests are **executable specifications** of Raft behavior under specific conditio
 - [message_handler_tests.rs](../core/tests/message_handler_tests.rs) - 27 tests
 - [leader_lease_tests.rs](../core/tests/leader_lease_tests.rs) - 6 tests
 
-### Integration Tests (76 tests in `validation/tests/`)
+### Integration Tests (`validation/tests/`)
 
-**Election Protocol (12 tests):**
+**Election Protocol:**
 - [election/basic_leader_election_tests.rs](tests/election/basic_leader_election_tests.rs) - Basic election scenarios
 - [election/pre_vote_tests.rs](tests/election/pre_vote_tests.rs) - 6 dedicated Pre-Vote tests
 - [election/election_with_log_restriction.rs](tests/election/election_with_log_restriction.rs) - Log-based election safety
 - [election/timed_election_tests.rs](tests/election/timed_election_tests.rs) - Timing-dependent scenarios
 
-**Replication & Safety (25 tests):**
+**Replication & Safety:**
 - [replication/client_payload_replication_tests.rs](tests/replication/client_payload_replication_tests.rs)
 - [replication/conflict_resolution_tests.rs](tests/replication/conflict_resolution_tests.rs)
 - [replication/commit_index_advancement_tests.rs](tests/replication/commit_index_advancement_tests.rs)
@@ -68,19 +66,19 @@ Tests are **executable specifications** of Raft behavior under specific conditio
 - [replication/rapid_sequential_command.rs](tests/replication/rapid_sequential_command.rs)
 - [replication/lease_integration_tests.rs](tests/replication/lease_integration_tests.rs) - 3 lease tests
 
-**Snapshots & Compaction (15 tests):**
+**Snapshots & Compaction:**
 - [snapshots/snapshot_creation_protocol_tests.rs](tests/snapshots/snapshot_creation_protocol_tests.rs)
 - [snapshots/snapshot_infrastructure_tests.rs](tests/snapshots/snapshot_infrastructure_tests.rs)
 - [snapshots/install_snapshot_candidate_tests.rs](tests/snapshots/install_snapshot_candidate_tests.rs)
 
-**Fault Tolerance (10 tests):**
+**Fault Tolerance:**
 - [fault_tolerance/crash_recovery_with_snapshots_tests.rs](tests/fault_tolerance/crash_recovery_with_snapshots_tests.rs)
 - [fault_tolerance/leader_steps_down.rs](tests/fault_tolerance/leader_steps_down.rs)
 
-**Membership Changes (8 tests):**
+**Membership Changes:**
 - [membership/config_api_tests.rs](tests/membership/config_api_tests.rs)
 
-**State Machine (6 tests):**
+**State Machine:**
 - [state_machine/apply_state_machine_tests.rs](tests/state_machine/apply_state_machine_tests.rs)
 - [state_machine/state_machine_safety_tests.rs](tests/state_machine/state_machine_safety_tests.rs)
 
@@ -94,7 +92,6 @@ Tests are **executable specifications** of Raft behavior under specific conditio
 - All safety guarantees validated
 
 ### ✅ Pre-Vote Protocol (Complete)
-- 6 dedicated tests
 - Term inflation prevention
 - Split-vote avoidance
 - Partition tolerance
@@ -104,17 +101,14 @@ Tests are **executable specifications** of Raft behavior under specific conditio
 - InstallSnapshot RPC with chunked transfer
 - Crash recovery with snapshot restoration
 - Follower catch-up via snapshots
-- 21 snapshot-specific tests
 
 ### ✅ Dynamic Membership (Single-Server Changes)
 - Add/remove one server at a time
 - Configuration validation
 - Catching-up servers (non-voting until synchronized)
-- 25 configuration change tests
 
 ### ✅ Lease-Based Linearizable Reads (Complete)
 - Leader lease grant/revoke logic
-- 9 comprehensive tests (6 unit + 3 integration)
 - Safety guarantees validated
 
 ## Running Tests
@@ -126,28 +120,6 @@ cargo test --workspace
 
 # Or use the script
 .\scripts\run_all_tests.ps1
-```
-
-### Core Unit Tests Only
-```bash
-cargo test -p raft-core
-```
-
-### Integration Tests Only
-```bash
-cargo test -p raft-validation
-```
-
-### Specific Test Suite
-```bash
-# Election tests
-cargo test -p raft-validation election
-
-# Snapshot tests
-cargo test -p raft-validation snapshots
-
-# Replication tests
-cargo test -p raft-validation replication
 ```
 
 ## Test Results
@@ -175,26 +147,6 @@ All 232 tests pass deterministically in both timeless and timefull modes:
 - Conflicting log entries
 - Snapshot transfer failures
 - Configuration change edge cases
-
-### Multi-Environment Validation
-- ✅ **Deterministic simulator** (timeless mode)
-- ✅ **Time-based simulator** (timefull mode)
-- ✅ **Embassy embedded** (5-node QEMU cluster)
-- ✅ **Test-utils** (standard Rust with heap allocations)
-
-**Same Raft core logic runs unchanged across all environments.**
-
-## Contributing
-
-When adding new features to Raft core:
-
-1. **Write unit tests first** in `core/tests/`
-2. **Add integration scenarios** in `validation/tests/`
-3. **Test both timeless and timefull** modes
-4. **Validate safety properties** explicitly
-5. **Document test intent** clearly (Arrange/Act/Assert)
-
-See [ADR-R3](../docs/adrs/ADR-R3%20Deterministic,%20Imperative%20Test%20Harness.md) for testing philosophy.
 
 ## License
 

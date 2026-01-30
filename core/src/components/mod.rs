@@ -7,5 +7,6 @@ pub mod election_manager;
 pub mod leader_lease;
 pub mod log_replication_manager;
 pub mod message_handler;
+pub mod message_handler_context;
 pub mod role_transition_manager;
 pub mod snapshot_manager;

@@ -12,67 +12,78 @@ This design philosophy enables the same consensus logic to run unchanged across:
 
 ---
 
-## Current Status
+## Features
 
-### ✅ Implemented Features
+### Implemented Features ✅
 
-**Core Raft Protocol:**
-- ✅ **Leader Election**
-  - Randomized election timeouts
-  - Vote request/response handling
-  - Candidate to Leader transition
-  - Split vote resolution
+#### 1. Core Raft Protocol ✅
 
-- ✅ **Log Replication**
-  - AppendEntries RPC with consistency checks
-  - Follower log matching and repair
-  - Commit index advancement (quorum-based)
-  - State machine application (in-order, idempotent)
+**Leader Election:**
+- Randomized election timeouts
+- Vote request/response handling
+- Candidate to Leader transition
+- Split vote resolution
 
-- ✅ **Safety Guarantees**
-  - Election Safety: At most one leader per term
-  - Leader Append-Only: Leaders never overwrite entries
-  - Log Matching: Identical entries at same index across nodes
-  - Leader Completeness: Committed entries present in all future leaders
-  - State Machine Safety: Deterministic, in-order application
+**Log Replication:**
+- AppendEntries RPC with consistency checks
+- Follower log matching and repair
+- Commit index advancement (quorum-based)
+- State machine application (in-order, idempotent)
 
-- ✅ **Log Compaction & Snapshots**
-  - Automatic snapshot creation at configurable threshold
-  - InstallSnapshot RPC with chunked transfer
-  - Snapshot metadata tracking (last_included_index/term)
-  - State machine snapshot/restore API
-  - Storage interface for snapshot persistence
-  - Log compaction (discard entries before snapshot)
-  - Crash recovery with snapshot restoration
-  - Follower catch-up via snapshot transfer
+**Safety Guarantees:**
+- Election Safety: At most one leader per term
+- Leader Append-Only: Leaders never overwrite entries
+- Log Matching: Identical entries at same index across nodes
+- Leader Completeness: Committed entries present in all future leaders
+- State Machine Safety: Deterministic, in-order application
 
-- ✅ **Pre-Vote Protocol**
-  - Prevents disruptions from partitioned nodes
-  - Term inflation protection
-  - No safety impact, pure liveness improvement
+**Pre-Vote Protocol:**
+- Prevents disruptions from partitioned nodes
+- Term inflation protection
+- No safety impact, pure liveness improvement
 
-- ✅ **Dynamic Membership (Single-Server Changes)**
-  - Add/remove one server at a time safely
-  - Configuration tracking and validation
-  - Catching-up servers (non-voting until synchronized)
-  - Configuration survives snapshots and crashes
+#### 2. Log Compaction & Snapshots ✅
 
-- ✅ **Lease-Based Linearizable Reads**
-  - Leader lease mechanism for high-performance reads
-  - Lease granted on commit advancement (quorum acknowledgment)
-  - Lease revoked on step down (leadership loss)
-  - Safety guarantee: lease_duration < election_timeout
+- Automatic snapshot creation at configurable threshold
+- InstallSnapshot RPC with chunked transfer
+- Snapshot metadata tracking (last_included_index/term)
+- State machine snapshot/restore API
+- Storage interface for snapshot persistence
+- Log compaction (discard entries before snapshot)
+- Crash recovery with snapshot restoration
+- Follower catch-up via snapshot transfer
+
+**Operational Value:** Production-ready bounded memory for long-running clusters
+
+#### 3. Dynamic Membership ✅
+
+**Single-Server Configuration Changes:**
+- Add/remove one server at a time safely
+- Configuration tracking and validation
+- Catching-up servers (non-voting until synchronized)
+- Configuration survives snapshots and crashes
+
+**Status:** 70% foundation complete. Joint Consensus (multi-server changes) not implemented
+
+#### 4. Lease-Based Linearizable Reads ✅
+
+- Leader lease mechanism for high-performance reads
+- Lease granted on commit advancement (quorum acknowledgment)
+- Lease revoked on step down (leadership loss)
+- Safety guarantee: lease_duration < election_timeout
+
+### Missing Features
+
+#### Joint Consensus (Multi-Server Configuration Changes)
+#### Leadership Transfer
+#### Read Index Protocol
 
 ### Validation
-
-All features are comprehensively tested with 232 tests (156 core unit + 76 validation integration) covering safety properties, adversarial scenarios, and multi-environment execution.
 
 See [../validation/README.md](../validation/README.md) for:
 - Test infrastructure and philosophy
 - Detailed test coverage by feature
 - Running instructions
-
----
 
 ## Architecture Principles
 
@@ -183,8 +194,6 @@ The `Observer` trait provides structured visibility:
 
 ### Core Components Architecture
 
-The Raft core is organized into focused, testable components:
-
 **State Management:**
 - [node_state.rs](src/node_state.rs) - Follower/Candidate/Leader states
 - [raft_node.rs](src/raft_node.rs) - Main Raft node implementation
@@ -215,215 +224,8 @@ The `MessageHandler` is the heart of Raft message processing, implementing:
 - **Config changes**: AddServer/RemoveServer protocol (joint consensus prep)
 - **Timer handling**: Election and heartbeat timeout processing
 
-**Current State**: Single 830-line file with clear separation of concerns via helper methods
-**Testability**: Isolated from RaftNode via MessageHandlerContext (7 dedicated tests in message_handler_tests.rs)
-
-
-
----
-
-## Advanced Features: Readiness Assessment
-
-The current implementation covers the core Raft protocol. The following advanced features are described in the Raft paper and required for production readiness. Here is a detailed analysis of implementation readiness:
-
-### 1. Log Compaction & Snapshots
-
-**Status**: ✅ **COMPLETE**
-
-**Implemented Components:**
-- ✅ State Machine abstraction with `apply()` method
-- ✅ Snapshot storage interface (`save_snapshot()`, `load_snapshot()`, `get_snapshot()`)
-- ✅ `InstallSnapshot` RPC in `RaftMsg` enum with chunked transfer
-- ✅ Snapshot metadata tracking (last_included_index/term)
-- ✅ StateMachine snapshot API (`create_snapshot()`, `restore_from_snapshot()`)
-- ✅ Storage trait `discard_entries_before()` for log compaction
-- ✅ Configurable threshold for triggering compaction (default: 10 entries)
-- ✅ Automatic snapshot creation at threshold
-- ✅ Snapshot transfer to lagging followers
-- ✅ **Crash recovery** - nodes restore state from snapshots on restart
-- ✅ Observer pattern extended for snapshot events
-
-**Implementation Details:**
-
-1. **Storage Trait Extensions:**
-   ```rust
-   fn save_snapshot(&mut self, snapshot: Snapshot<Self::SnapshotData>);
-   fn load_snapshot(&self) -> Option<Snapshot<Self::SnapshotData>>;
-   fn get_snapshot(&self) -> Option<Snapshot<Self::SnapshotData>>;
-   fn discard_entries_before(&mut self, index: LogIndex);
-   fn get_snapshot_chunk(&self, offset: usize, max_size: usize) -> Option<Vec<u8>>;
-   ```
-
-2. **StateMachine Trait Extensions:**
-   ```rust
-   fn create_snapshot(&self) -> Self::SnapshotData;
-   fn restore_from_snapshot(&mut self, data: &Self::SnapshotData);
-   ```
-
-3. **InstallSnapshot RPC:**
-   ```rust
-   RaftMsg::InstallSnapshot {
-       term: Term,
-       leader_id: NodeId,
-       last_included_index: LogIndex,
-       last_included_term: Term,
-       offset: usize,
-       data: Vec<u8>,
-       done: bool,
-   }
-   ```
-
-4. **Compaction Trigger Logic:**
-   - Automatic snapshot creation when log exceeds threshold
-   - Leader detects followers needing snapshots (next_index <= last_included_index)
-   - Chunked snapshot transfer for large state machines
-   - Log compaction after successful snapshot creation
-
-5. **Crash Recovery:**
-   - On node restart, load latest snapshot from storage
-   - Restore state machine to snapshot state
-   - Update last_applied to snapshot's last_included_index
-   - **Never replay uncommitted log entries** (Raft safety requirement)
-
-**Operational Value**: Production-ready bounded memory for long-running clusters
-
----
-
-### 2. Dynamic Membership (Joint Consensus)
-
-**Status**: ⚠️ **Partially Implemented (70%)**
-
-**Currently Implemented:**
-- ✅ `ConfigurationChange` enum (AddServer/RemoveServer)
-- ✅ `Configuration` struct with quorum calculation
-- ✅ `ConfigChangeManager` for validation and tracking
-- ✅ Integration in `RaftNode` and `MessageHandler`
-- ✅ `EntryType::ConfigChange` in log entries
-- ✅ Observer events for configuration changes
-- ✅ Single-Server Changes infrastructure (Week 1 tasks from implementation plan)
-
-**Missing for Full Joint Consensus:**
-- ❌ Two-configuration state (C_old and C_old,new simultaneous tracking)
-- ❌ Joint quorum calculation (majority from both configs)
-- ❌ Automatic transition from C_old,new to C_new
-- ❌ Tests for joint consensus scenarios
-
-**Implementation Effort**: Medium (2-3 weeks for Joint Consensus upgrade)
-**Operational Value**: High (enables cluster scaling without downtime)
-**Risk**: High (affects core election/commit logic)
-
----
-
-### 3. Linearizable Reads (Read-Only Queries)
-
-**Status**: ✅ **COMPLETE**
-
-**Implemented Components:**
-- ✅ `LeaderLease` struct with grant/revoke/is_valid methods
-- ✅ Clock abstraction (CLK parameter) for time-based operations
-- ✅ Lease granted on commit advancement (quorum acknowledgment)
-- ✅ Lease revoked on step down (leadership loss)
-- ✅ Safety guarantee: `lease_duration < election_timeout`
-- ✅ Integrated into `RaftNode` and `MessageHandler`
-- ✅ Observer events for lease operations
-
-**Implementation Details:**
-
-1. **LeaderLease Structure:**
-   ```rust
-   pub struct LeaderLease<CLK: Clock> {
-       expiration: Option<CLK::Instant>,
-       lease_duration: Duration,
-   }
-   ```
-
-2. **Lease Grant Logic:**
-   - Triggered on commit index advancement (quorum acknowledgment)
-   - Located in `handle_append_entries_response()`
-   - Ensures leader has recent quorum contact before serving reads
-
-3. **Lease Revoke Logic:**
-   - Triggered on step down (leadership loss)
-   - Located in `step_down()` common handler
-   - Prevents stale reads from former leaders
-
-4. **Safety Invariant:**
-   - `lease_duration < election_timeout` enforced at construction
-   - Prevents reads during leadership transitions
-   - Leader cannot grant stale lease after losing leadership
-
-5. **Observer Events:**
-   ```rust
-   fn lease_granted(&mut self, node: NodeId, expiration: CLK::Instant);
-   fn lease_revoked(&mut self, node: NodeId);
-   ```
-
-**Operational Value**: High (50-100x read performance improvement)
-
----
-
-## Recommended Implementation Order
-
-### Phase 1: Log Compaction + Snapshots ✅
-**Status**: ✅ **COMPLETE**
-
-**Completed Features:**
-- ✅ Automatic snapshot creation at configurable threshold
-- ✅ InstallSnapshot RPC with chunked transfer
-- ✅ Snapshot storage interface and persistence
-- ✅ State machine snapshot/restore API
-- ✅ Log compaction (discard entries before snapshot)
-- ✅ Crash recovery with snapshot restoration
-- ✅ Follower catch-up via snapshot transfer
-
-**Operational Impact**: Clusters can now run indefinitely with bounded memory usage
-
----
-
-### Phase 2: Pre-Vote Protocol ✅
-**Status**: ✅ **COMPLETE**
-
-**Implementation**: Fully integrated with 6 dedicated tests
-**Problem Solved**: Prevents disruptive elections from partitioned nodes
-**Impact**: Stable leaders not disrupted by isolated nodes with inflated terms
-
----
-
-### Phase 3: Dynamic Membership - Joint Consensus Upgrade
-**Priority**: High
-**Status**: 70% foundation complete, needs Joint Consensus logic
-
-**Rationale:**
-- Foundation already built (Single-Server Changes)
-- Critical for production operational flexibility
-- Most complex remaining feature
-
-**Success Criteria:**
-- Cluster can add/remove nodes without downtime
-- Joint consensus prevents split-brain during reconfig
-- Edge cases handled (leader removal, self-removal, etc.)
-
----
-
-### Phase 4: Linearizable Reads ✅
-**Priority**: Medium
-**Status**: ✅ **COMPLETE**
-
-**Rationale:**
-- High-value user-facing feature (50-100x read performance)
-- Validates clock abstraction and observer extensibility
-- Relatively isolated from core write path
-
-**Success Criteria (All Met):**
-- ✅ Leader lease mechanism with grant/revoke logic
-- ✅ Reads are linearizable (no stale data)
-- ✅ Lease safety: `lease_duration < election_timeout`
-
-**Completed Work:**
-- LeaderLease component with clock abstraction
-- Integration in MessageHandler (grant on commit, revoke on step down)
-- Observer events for lease operations
-- Safety invariant enforcement at construction
+**Current State**: ~340 lines with clear separation of concerns via helper methods
+**Testability**: Isolated from RaftNode via MessageHandlerContext
 
 ---
 

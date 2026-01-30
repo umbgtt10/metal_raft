@@ -2,21 +2,17 @@
 
 ## Overview
 
-This project implements the **Raft consensus algorithm** once, realizes it on `no_std + Embassy`, and allows the possibility to implement on a production-grade AWS/Kubernetes deployment.
+This project implements the **Raft consensus algorithm** once, realizes it on `no_std + Embassy`, and allows the possibility to implement it on a production-grade AWS/Kubernetes deployment.
 
 The initial inspiration and methodological foundation for this work comes from the **MIT distributed systems labs (6.824 / 6.5840)**, particularly the Raft exercise. The project builds on those ideas but deliberately extends them toward stronger abstraction boundaries, multi-environment realizations, and production-grade operability.
 
 ## Objectives
 
-  1) Implement Raft in a technology-agnostic core [docs/adrs/ADS-R1%20Technology-Agnostic%20Algorithmic%20Core.md](docs/adrs/ADR-R1%20Technology-Agnostic%20Algorithmic%20Core.md)
-  2) Implement Raft with a generic-only architecture (no dynamic dispatch) and show the limits of this approach
-  3) Validate correctness through a deterministic, adversarial test harness [docs/validation/README.md](docs/validation/README.md)
-  4) Realize Raft on `no_std + Embassy` for embedded targets [embassy/README.md](embassy/README.md)
+  1) Implement Raft in a technology-agnostic core ([docs/adrs/ADS-R1%20Technology-Agnostic%20Algorithmic%20Core.md](docs/adrs/ADR-R1%20Technology-Agnostic%20Algorithmic%20Core.md))
+  2) Implement Raft with a generic-only architecture (no dynamic dispatching) and show the limits of this approach ([docs/adrs/ADR-R5 Monomorphization-First Architecture.md](docs/adrs/ADR-R5%20Monomorphization-First%20Architecture.md))
+  3) Validate correctness through a deterministic, adversarial test harness ([validation/README.md](validation/README.md))
+  4) Realize Raft on `no_std + Embassy` for embedded targets ([embassy/README.md](embassy/README.md))
   5) Demonstrate that the same core can be realized on any platform (e.g., Tokio + gRPC + persistent storage)
-
-## Design Philosophy
-
-See [validation/README.md](validation/README.md) for complete testing documentation.
 
 ## Project Structure
 
@@ -30,70 +26,16 @@ metal_raft/
   test-utils/         # Shared test utilities
 ```
 
-### `metal_raft/core`
+## Features
 
-* `#![no_std]` (optionally `alloc`)
-* Implements:
-  * Leader election (with Pre-Vote Protocol)
-  * Log replication
-  * Log compaction & snapshots
-  * Commit rules
-  * State transitions
-  * Crash recovery
-* Exposes abstract traits for:
-  * Transport
-  * TimerService
-  * Storage
-  * StateMachine
-  * Observer (for instrumentation)
-  * Collection abstractions (NodeCollection, MapCollection, etc.)
+MetalRaft implements a comprehensive Raft consensus algorithm with:
+- **Core protocol:** Leader election, log replication, safety guarantees
+- **Log compaction & snapshots:** Automatic snapshots with bounded memory
+- **Pre-Vote Protocol:** Term inflation prevention
+- **Dynamic membership:** Single-server configuration changes
+- **Lease-based linearizable reads:** High-performance read optimization
 
-This crate has **no dependencies outside core Rust**.
-
----
-
-## Implemented Features
-
-### Core Raft Protocol ✅
-
-* Leader election with randomized timeouts
-* Log replication with consistency checks
-* Commit index advancement (quorum-based)
-* State machine application (in-order, idempotent)
-* Pre-Vote Protocol (prevents term inflation)
-* All safety guarantees:
-  * ✅ Single-leader per term
-  * ✅ Log-matching property
-  * ✅ Monotonic commit index
-  * ✅ Correct recovery from partitions
-
-### Log Compaction & Snapshots ✅
-
-* Automatic snapshot creation at configurable threshold
-* InstallSnapshot RPC with chunked transfer
-* Snapshot metadata tracking (last_included_index/term)
-* State machine snapshot/restore API
-* Log compaction (discard entries before snapshot)
-* Crash recovery with snapshot restoration
-* Bounded memory usage for long-running clusters
-
-### Dynamic Membership ✅
-
-* Single-server configuration changes (add/remove one node at a time)
-* Configuration tracking with dynamic quorum calculation
-* Catching-up servers (non-voting until synchronized)
-* Configuration survives snapshots and crashes
-* Safe add/remove server APIs with comprehensive validation
-* 37 tests (25 unit + 12 integration)
-
-### Lease-Based Linearizable Reads ✅
-
-* Leader lease mechanism with grant/revoke logic
-* Lease granted on commit advancement (quorum acknowledgment)
-* Lease revoked on leadership loss (step down)
-* Safety guarantee: lease_duration < election_timeout
-* 9 comprehensive tests (6 unit + 3 integration)
-* 50-100x read performance improvement
+See [core/README.md](core/README.md) for detailed feature documentation and implementation status.
 
 ## Validation
 
@@ -106,106 +48,6 @@ The Raft core is validated through 232 comprehensive tests (156 core unit + 76 v
 
 See [validation/README.md](validation/README.md) for complete testing documentation.
 
----
-
-## Features Not Implemented
-
-The following features are **intentionally not implemented** in this project:
-
-### Joint Consensus (Multi-Server Configuration Changes)
-
-Currently, the implementation supports **single-server changes** only (add/remove one node at a time).
-
-**Why Not Implemented**: Foundation exists (80% complete), but requires 2-3 weeks of work on an architecture that design exploration has shown to be suboptimal. A future project with the Pure Algorithm + Execution Layer architecture will implement this correctly from the start.
-
-**What's Already Working**: Single-server configuration changes are fully functional and sufficient for most use cases.
-
-### Leadership Transfer
-
-Graceful leadership handoff for maintenance operations.
-
-**Why Not Implemented**: Would require 1-2 weeks on current architecture. Better suited for a greenfield implementation with proper architectural foundation.
-
-**Workaround**: Current implementation supports safe leader failures and automatic re-election.
-
-### Read Index Protocol
-
-An alternative to lease-based reads for linearizable queries.
-
-**Why Not Implemented**: Lease-based reads are already implemented and provide superior performance (50-100x improvement). Read Index Protocol would be a worse alternative with no clear benefit.
-
-**What's Already Working**: Lease-based linearizable reads with full safety guarantees.
-
-### Pure Algorithm Architecture
-
-Three-layer design: Pure Algorithm + Execution Layer + Infrastructure (see [FUTURE_ARCHITECTURE.md](docs/FUTURE_ARCHITECTURE.md)).
-
-**Why Not Implemented**: Would require weeks to refactor ~80% of the codebase. This architectural pattern is better applied to a new project from the start rather than retrofitted.
-
-**Value**: Architectural insights are fully documented for future work.
-
----
-
-## Rationale: POC Scope
-
-This project successfully demonstrates:
-- Raft can be implemented correctly in pure Rust
-- Zero-cost abstractions scale to complex distributed algorithms
-- Multi-environment portability is achievable
-- Proper testing strategies for consensus systems
-
----
-
-## Planned: Production Deployment
-
-Future work for production-grade deployment:
-* Tokio runtime realization
-* Real networking (gRPC/TCP)
-* Persistent storage (disk/cloud)
-* Docker images and Kubernetes manifests
-* Observability (Prometheus, OpenTelemetry, structured logging)
-* Serialization via `serde` or similar (strictly outside core)
-
----
-
-## Testing Strategy
-
-* All Raft correctness tests run unchanged across phases
-* Infrastructure additions must not alter test behavior
-* Failures must be:
-
-  * reproducible
-  * deterministic
-  * explainable
-
-The test harness is treated as a **formal contract**.
-
----
-
-## Documentation TODO
-
-### Architectural Decision Records (To Be Written)
-
-#### High Priority
-- 🔲 **ADR-R11: Storage Durability Guarantees** - Fsync policy, WAL vs direct writes, durability/throughput tradeoffs
-- 🔲 **ADR-R13: Transport Abstraction Design** - Why async-agnostic, message delivery guarantees, timeout handling
-- 🔲 **ADR-R14: Error Propagation Strategy** - Panic vs Result, storage failure handling, network retry policies
-- 🔲 **ADR-R16: Configuration Management** - Static vs dynamic config, election timeout tuning, snapshot threshold policy
-- 🔲 **ADR-R19: Security Boundary Definition** - Trusted network assumption, TLS/auth in runtime layer, no BFT
-
-#### Medium Priority
-- 🔲 **ADR-R9: Observer Pattern for Instrumentation** - Trait-based observers, observable events, separation of concerns
-- 🔲 **ADR-R10: Zero-Cost Abstractions for Telemetry** - Zero-overhead observability in `no_std`, Prometheus integration
-- 🔲 **ADR-R12: Serialization Strategy** - Wire format choice, backward compatibility, schema evolution
-- 🔲 **ADR-R17: Multi-Environment Realization Strategy** - Why Embassy sim exists, path to production, adapter responsibilities
-
-#### Lower Priority
-- 🔲 **ADR-R15: Deterministic Testing Philosophy** - Imperative vs property-based tests, chaos testing, soak tests
-- 🔲 **ADR-R18: Memory Bounds & Resource Limits** - Max log size, message size limits, connection limits
-- 🔲 **ADR-R20: Client Request Semantics** - Submit returns index not result, NotLeader retries, linearizability guarantees
-
----
-
 ## Non-Goals
 
 This project intentionally does **not** aim to:
@@ -215,45 +57,22 @@ This project intentionally does **not** aim to:
 * compete with production systems like etcd
 * support large dynamic clusters in embedded targets
 
-The goal is **clarity, correctness, and architectural rigor**.
+## Status
 
----
+POC completed and core features implemented. See individual READMEs for feature completeness and validation status.
 
-## Motivation & Outcomes
+## Issues & Limitations
 
-This project was created to demonstrate:
+See [docs/ISSUES_AND_LIMITATIONS.md](docs/ISSUES_AND_LIMITATIONS.md) for detailed discussion of:
+- **Generic Explosion**: High number of type parameters (~11) affecting ergonomics and compile times
+- **Missing Abstraction Layer**: Algorithm not separated from execution infrastructure
 
-* understanding of distributed consensus
-* disciplined abstraction design
-* correctness-first engineering
-* portability across radically different environments
-* production-ready observability practices
+## Possible Next Steps
 
-**All objectives achieved.** The project has successfully validated these principles through working implementation and comprehensive testing.
-
-
-## Current Architecture Limitations
-
-**Note**: The current design successfully achieves correctness and multi-environment portability, but has architectural limitations around algorithm swappability. A superior three-layer architecture (Pure Algorithm + Execution Layer + Infrastructure) has been identified through design exploration. This future architecture, which converges with modern blockchain designs (Ethereum, Cosmos, Polkadot), will be pursued in a future project that strategically combines monomorphization (for hot paths) with dynamic dispatch (for flexibility). See [FUTURE_ARCHITECTURE.md](docs/FUTURE_ARCHITECTURE.md) for detailed analysis.
-
-
----
-
-### 4. Monomorphization-First Architecture
-
-* This project serves as a **design exploration** for a larger future effort, demonstrating that complex distributed algorithms like Raft can be implemented entirely through **compile-time generics** (monomorphization) without dynamic dispatch (`dyn Trait`).
-* **Objective**: Prove that zero-cost abstractions scale to real-world consensus algorithms, including advanced features (log compaction, snapshots, dynamic membership, linearizable reads).
-* **Key Insight**: Raft's complexity remains manageable with generics (~11 type parameters). This approach yields:
-  * Zero runtime overhead (no vtable lookups)
-  * Aggressive compiler optimizations (inlining, dead code elimination)
-  * Embedded-friendly footprint
-* **The Trade-off**: Even though Rust's zero-cost abstractions guarantee high performance through monomorphization, **the price to pay is cognitive load**. As type parameters proliferate (11+ generics), developers face:
-  * Complex type signatures that obscure intent
-  * Increased mental overhead when reasoning about code
-  * Longer compile times as instantiations multiply
-  * Reduced IDE responsiveness and error message clarity
-* **Design Principle**: This project intentionally pushes monomorphization to its reasonable limits for Raft, demonstrating that at a certain complexity threshold, the pure monomorphization approach must be **appropriately combined with dynamic dispatch** (`dyn Trait`). This combination is architecturally significant: **generic abstractions signal and embody hard invariants** (compile-time enforced contracts that cannot be violated), while **dynamic dispatch signals soft architectural boundaries** (runtime flexibility points where behavior can vary without breaking core guarantees).
-
+* Fix missing abstraction issue by refactoring the codebase to separate algorithm and execution layers
+* Implement more features such as joint consensus and leadership transfer
+* Implement a production-grade realization on AWS/Kubernetes
+* Question the monomorphization-first architecture and explore hybrid approaches
 
 ## License
 

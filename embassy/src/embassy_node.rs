@@ -4,6 +4,7 @@
 
 use alloc::collections::BTreeMap;
 use alloc::string::String;
+use alloc::vec::Vec;
 use embassy_futures::select::{select4, Either4};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Receiver, Sender};
@@ -11,7 +12,7 @@ use embassy_time::Duration;
 use raft_core::components::message_handler::ReadError;
 
 use crate::cancellation_token::CancellationToken;
-use crate::cluster::{ClientRequest, ClusterError};
+use crate::cluster::{ClientRequest, ClusterError, CLIENT_CHANNELS, CURRENT_LEADER};
 use crate::collections::embassy_config_change_collection::EmbassyConfigChangeCollection;
 use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::collections::embassy_map_collection::EmbassyMapCollection;
@@ -203,7 +204,7 @@ impl<
     /// Process requests that have been committed
     async fn process_committed_requests(&mut self) {
         let commit_index = self.raft_node.commit_index();
-        let mut completed = alloc::vec::Vec::new();
+        let mut completed = Vec::new();
 
         // Identify completed requests
         for (index, _) in self.pending_commands.iter() {
@@ -240,11 +241,11 @@ impl<
                     Err(ClientError::NotLeader) => {
                         // Forwarding logic
                         // If we know the leader, forward logic
-                        let leader_id = *crate::cluster::CURRENT_LEADER.lock().await;
+                        let leader_id = *CURRENT_LEADER.lock().await;
 
                         if let Some(leader) = leader_id {
                             info!("Node {} redirecting to Leader {}", self.node_id, leader);
-                            let _ = crate::cluster::CLIENT_CHANNELS[leader as usize - 1].try_send(
+                            let _ = CLIENT_CHANNELS[leader as usize - 1].try_send(
                                 ClientRequest::Write {
                                     payload,
                                     response_tx,
@@ -268,11 +269,11 @@ impl<
                     }
                     Err(ReadError::NotLeaderOrNoLease) => {
                         // Cannot serve read - forward to leader
-                        let leader_id = *crate::cluster::CURRENT_LEADER.lock().await;
+                        let leader_id = *CURRENT_LEADER.lock().await;
 
                         if let Some(leader) = leader_id {
                             if leader != self.node_id {
-                                let _ = crate::cluster::CLIENT_CHANNELS[leader as usize - 1]
+                                let _ = CLIENT_CHANNELS[leader as usize - 1]
                                     .try_send(ClientRequest::Read { key, response_tx });
                             } else {
                                 // We are leader but can't serve reads (no valid lease)

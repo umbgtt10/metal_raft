@@ -22,31 +22,32 @@
 embassy/
 ├── src/
 │   ├── main.rs                       # Entry point, spawns cluster
-│   ├── embassy_node.rs               # Main Raft node loop (generic over T, S)
+│   ├── embassy_node.rs               # Main Raft node loop (async wrapper)
 │   ├── configurations/               # Feature-gated configurations
 │   │   ├── mod.rs                    # Single location for all cfg logic
-│   │   ├── memory_channel/           # In-memory storage + channel transport
+│   │   ├── memory_channel/           # Config: in-memory + channel
 │   │   │   ├── mod.rs
-│   │   │   ├── setup.rs              # Cluster initialization
-│   │   │   ├── storage.rs            # In-memory storage implementation
-│   │   │   └── transport.rs          # Channel-based transport
-│   │   └── semihosting_udp/          # Persistent storage + UDP transport
-│   │       ├── mod.rs
-│   │       ├── setup.rs              # Cluster initialization
-│   │       └── storage/              # Semihosting-based storage
-│   │           ├── mod.rs
-│   │           └── storage.rs        # File I/O via syscalls
+│   │   │   └── setup.rs              # Cluster initialization
+│   │   ├── semihosting_udp/          # Config: semihosting + UDP
+│   │   │   ├── mod.rs
+│   │   │   └── setup.rs              # Cluster initialization
+│   │   ├── storage/                  # Storage implementations
+│   │   │   ├── in_memory/
+│   │   │   │   └── storage.rs        # In-memory storage
+│   │   │   └── semihosting/
+│   │   │       └── storage.rs        # File I/O via syscalls
+│   │   └── transport/                # Transport implementations
+│   │       ├── async_transport.rs    # Transport trait
+│   │       ├── embassy_transport.rs  # Raft-to-async bridge
+│   │       ├── channel/
+│   │       │   └── transport.rs      # In-memory channels
+│   │       └── udp/                  # UDP network transport
+│   │           ├── transport.rs
+│   │           ├── driver.rs
+│   │           ├── serde_raft_message.rs
+│   │           └── config.rs
 │   ├── embassy_storage.rs            # Storage trait definition
 │   ├── embassy_timer.rs              # Election/heartbeat timers
-│   ├── transport/                    # Transport implementations
-│   │   ├── async_transport.rs        # Transport trait
-│   │   ├── embassy_transport.rs      # Raft-to-async bridge
-│   │   ├── channel_transport.rs      # In-memory channels
-│   │   └── udp/                      # UDP network transport
-│   │       ├── transport.rs
-│   │       ├── driver.rs
-│   │       ├── serde.rs
-│   │       └── config.rs
 │   └── [other adapters]
 ├── persistency/                      # Persistent storage files (gitignored)
 └── Cargo.toml
@@ -113,8 +114,6 @@ cargo run --release --features in-memory-storage,channel-transport --no-default-
 
 ### Persistent Storage
 
-When using `--features semihosting-storage`, Raft state is persisted to files via QEMU semihosting:
-
 **Storage Location:** `embassy/persistency/`
 
 **Files Created:**
@@ -130,21 +129,6 @@ When using `--features semihosting-storage`, Raft state is persisted to files vi
 - Log entries written on append
 - Snapshots written on creation
 - Files survive cluster restarts (crash recovery)
-
-### Expected Output
-
-```
-INFO Starting 5-node Raft cluster in Embassy
-INFO Using UDP transport (simulated Ethernet)
-INFO WireRaftMsg serialization layer: COMPLETE ✓
-INFO Network stacks created, waiting for configuration...
-INFO Node 1 network configured: Some(StaticConfigV4 { ... })
-...
-INFO All UDP nodes started!
-INFO Node 3 starting election (term 1)
-INFO Node 3 became Leader for term 1
-INFO Node 3 sending heartbeats...
-```
 
 ## Technical Details
 
@@ -182,24 +166,6 @@ Embassy's async runtime manages:
 - 5 UDP sender tasks (UDP only)
 
 All coordinated via `embassy-executor` with bounded channels for backpressure.
-
-## Development
-
-### Building for Different Configurations
-
-```bash
-# Check all configuration combinations
-cargo check --target thumbv7em-none-eabihf --features semihosting-storage,udp-transport
-cargo check --target thumbv7em-none-eabihf --features in-memory-storage,channel-transport --no-default-features
-cargo check --target thumbv7em-none-eabihf --features semihosting-storage,channel-transport --no-default-features
-cargo check --target thumbv7em-none-eabihf --features in-memory-storage,udp-transport --no-default-features
-
-# Build release binary (default: semihosting-storage + udp-transport)
-cargo build --release --target thumbv7em-none-eabihf
-
-# Run tests (host environment)
-cargo test --lib
-```
 
 ### Code Quality
 
@@ -244,21 +210,14 @@ See [../validation/README.md](../validation/README.md) for comprehensive test do
 9. **Commit-based acknowledgments**: Clients notified only after quorum replication
 10. **Persistent storage**: File-backed Raft state via semihosting (optional)
 11. **Graceful shutdown**: Broadcast cancellation mechanism for all nodes
-12. **Zero-cost abstractions**: Monomorphization ensures no runtime overhead
 
-### Future Enhancements (Out of Scope)
+### Future Enhancements
 
 - [ ] Run on real hardware (STM32, nRF52, etc.)
 - [ ] Flash driver integration (replace semihosting)
 - [ ] Embassy implementation of snapshotting (core supports it)
 - [ ] Embassy implementation of dynamic membership (core supports single-server changes)
 - [ ] Network partition simulation
-
-## Related Projects
-
-- **raft-core**: The platform-agnostic Raft library this project uses
-- **Embassy**: The async runtime powering the executor
-- **embassy-net**: The embedded TCP/IP stack (based on smoltcp)
 
 ## License
 

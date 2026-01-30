@@ -10,21 +10,16 @@ use crate::{
         node_collection::NodeCollection,
     },
     components::{
-        config_change_manager::{ConfigChangeManager, ConfigError},
-        election_manager::ElectionManager,
-        leader_lease::LeaderLease,
-        log_replication_manager::LogReplicationManager,
-        snapshot_manager::SnapshotManager,
+        config_change_manager::ConfigError, message_handler_context::MessageHandlerContext,
     },
     log_entry::ConfigurationChange,
-    node_state::NodeState,
     observer::Observer,
     raft_messages::RaftMsg,
     state_machine::StateMachine,
     storage::Storage,
     timer_service::{TimerKind, TimerService},
     transport::Transport,
-    types::{LogIndex, NodeId, Term},
+    types::{LogIndex, NodeId},
 };
 
 mod admin;
@@ -64,37 +59,6 @@ where
     CLK: Clock,
 {
     _phantom: PhantomData<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
-}
-
-/// Context struct that bundles all mutable references needed by MessageHandler
-pub struct MessageHandlerContext<'a, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
-where
-    P: Clone,
-    T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
-    S: Storage<Payload = P>,
-    SM: StateMachine<Payload = P>,
-    C: NodeCollection,
-    L: LogEntryCollection<Payload = P>,
-    CC: ChunkCollection + Clone,
-    M: MapCollection,
-    TS: TimerService,
-    O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
-    CCC: ConfigChangeCollection,
-    CLK: Clock,
-{
-    pub id: &'a NodeId,
-    pub role: &'a mut NodeState,
-    pub current_term: &'a mut Term,
-    pub transport: &'a mut T,
-    pub storage: &'a mut S,
-    pub state_machine: &'a mut SM,
-    pub observer: &'a mut O,
-    pub election: &'a mut ElectionManager<C, TS>,
-    pub replication: &'a mut LogReplicationManager<M>,
-    pub config_manager: &'a mut ConfigChangeManager<C, M>,
-    pub snapshot_manager: &'a mut SnapshotManager,
-    pub leader_lease: &'a mut LeaderLease<CLK>,
-    pub _phantom: core::marker::PhantomData<CCC>,
 }
 
 impl<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
