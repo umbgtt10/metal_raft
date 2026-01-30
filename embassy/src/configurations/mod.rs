@@ -2,12 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-//! Configuration modules combining storage and transport implementations
-//!
-//! This module contains:
-//! - Component implementations (storage, transport)
-//! - Complete configurations that combine components for specific use cases
-
 // Core component modules (always available)
 pub mod storage;
 pub mod transport;

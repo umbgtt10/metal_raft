@@ -4,7 +4,7 @@
 
 use crate::cancellation_token::CancellationToken;
 use crate::client_channel_hub::ClientChannelHub;
-use crate::configurations::storage::semihosting::storage::SemihostingStorage;
+use crate::configurations::storage::SemihostingStorage;
 use crate::configurations::transport::udp::config::{self, get_node_config};
 use crate::configurations::transport::udp::driver::{MockNetDriver, NetworkBus};
 use crate::configurations::transport::udp::transport::{

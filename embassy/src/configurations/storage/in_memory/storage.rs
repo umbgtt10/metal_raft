@@ -10,7 +10,7 @@ use heapless::Vec;
 use raft_core::{
     collections::{chunk_collection::ChunkCollection, log_entry_collection::LogEntryCollection},
     log_entry::LogEntry,
-    snapshot::{SnapshotBuilder, SnapshotData},
+    snapshot::{Snapshot, SnapshotBuilder, SnapshotData},
     storage::Storage,
     types::{LogIndex, NodeId, Term},
 };
