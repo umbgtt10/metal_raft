@@ -50,7 +50,6 @@ pub fn handle_pre_vote_request<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
 
     let response = ctx.election.handle_pre_vote_request(
         term,
-        candidate_id,
         last_log_index,
         last_log_term,
         *ctx.current_term,

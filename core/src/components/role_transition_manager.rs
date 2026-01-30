@@ -18,7 +18,6 @@ use crate::{
     types::{NodeId, Term},
 };
 
-/// Manages role transitions (Follower -> Candidate -> Leader) and related state changes
 pub struct RoleTransitionManager;
 
 impl RoleTransitionManager {
@@ -26,7 +25,6 @@ impl RoleTransitionManager {
         Self
     }
 
-    /// Start a pre-vote phase to test if we can win an election
     pub fn start_pre_vote<P, L, CC, C, TS, O, S>(
         node_id: NodeId,
         current_term: Term,
@@ -48,7 +46,6 @@ impl RoleTransitionManager {
         election.start_pre_vote(node_id, current_term, storage)
     }
 
-    /// Start a real election (incrementing term and voting for self)
     pub fn start_election<P, L, CC, C, TS, O, S>(
         node_id: NodeId,
         current_term: &mut Term,
@@ -101,7 +98,6 @@ impl RoleTransitionManager {
         observer.role_changed(node_id, old_role, Role::Leader, current_term);
         observer.leader_elected(node_id, current_term);
 
-        // Initialize replication state
         replication.initialize_leader_state(members, storage);
 
         election.timer_service_mut().stop_timers();
@@ -140,7 +136,6 @@ impl RoleTransitionManager {
         observer.role_changed(node_id, old_role, Role::Follower, new_term);
     }
 
-    /// Convert NodeState to Observer Role
     pub fn node_state_to_role(state: &NodeState) -> Role {
         match state {
             NodeState::Follower => Role::Follower,

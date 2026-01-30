@@ -61,13 +61,11 @@ pub fn broadcast<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
     CCC: ConfigChangeCollection,
     CLK: Clock,
 {
-    // Collect peer IDs first to avoid borrowing issues (excluding self)
     let mut ids = C::new();
     for peer in ctx.config_manager.config().peers(*ctx.id) {
         ids.push(peer).ok();
     }
 
-    // Now send to each peer
     for peer in ids.iter() {
         send(ctx, peer, msg.clone());
     }
@@ -127,10 +125,7 @@ pub fn step_down<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
         old_role,
     );
 
-    // Clear current leader when stepping down
     *ctx.current_leader = None;
-
-    // Revoke leader lease when stepping down
     ctx.leader_lease.revoke();
 }
 
@@ -202,7 +197,6 @@ pub fn apply_config_changes<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
     CCC: ConfigChangeCollection,
     CLK: Clock,
 {
-    // Check if we need to notify observer about role change (if we removed ourselves)
     let old_role = node_state_to_role(ctx);
     let last_log_index = ctx.storage.last_log_index();
 
@@ -215,7 +209,6 @@ pub fn apply_config_changes<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
         ctx.role,
     );
 
-    // If we stepped down due to self-removal, notify observer
     let new_role = node_state_to_role(ctx);
     if old_role != new_role {
         ctx.observer

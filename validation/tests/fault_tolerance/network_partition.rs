@@ -10,7 +10,7 @@ use raft_validation::timeless_test_cluster::TimelessTestCluster;
 
 #[test]
 fn test_liveness_network_partition_recovery() {
-    // Arrange - Create 5-node cluster
+    // Arrange
     let mut cluster = TimelessTestCluster::new();
     cluster.add_node(1);
     cluster.add_node(2);
@@ -19,74 +19,70 @@ fn test_liveness_network_partition_recovery() {
     cluster.add_node(5);
     cluster.connect_peers();
 
-    // Node 1 becomes leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
+
+    // Assert
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
 
-    // Leader replicates an entry
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ClientCommand("SET x=1".to_string()));
     cluster.deliver_messages();
 
-    // All nodes have entry 1
+    // Assert
     assert_eq!(cluster.get_node(1).storage().last_log_index(), 1);
     assert_eq!(cluster.get_node(5).storage().last_log_index(), 1);
 
-    // Act - Simulate network partition: [1, 2] vs [3, 4, 5]
+    // Act
     cluster.partition(&[1, 2], &[3, 4, 5]);
-
-    // Minority partition (1, 2) tries to make progress
     cluster
         .get_node_mut(1)
         .on_event(Event::ClientCommand("SET y=2".to_string()));
-    cluster.deliver_messages_partition(&[1, 2]); // Only deliver within minority
+    cluster.deliver_messages_partition(&[1, 2]);
 
-    // Node 1 appends locally but cannot commit (no majority)
+    // Assert
     assert_eq!(cluster.get_node(1).storage().last_log_index(), 2);
-    assert_eq!(cluster.get_node(1).commit_index(), 1); // Still 1 (no majority)
+    assert_eq!(cluster.get_node(1).commit_index(), 1);
 
-    // Majority partition (3, 4, 5) elects new leader
+    // Act
     cluster
         .get_node_mut(3)
         .on_event(Event::TimerFired(TimerKind::Election));
-    cluster.deliver_messages_partition(&[3, 4, 5]); // Only deliver within majority
+    cluster.deliver_messages_partition(&[3, 4, 5]);
 
+    // Assert
     assert_eq!(*cluster.get_node(3).role(), NodeState::Leader);
 
-    // New leader writes and commits entry in majority partition
+    // Act
     cluster
         .get_node_mut(3)
         .on_event(Event::ClientCommand("SET z=3".to_string()));
     cluster.deliver_messages_partition(&[3, 4, 5]);
 
-    // Majority partition commits the new entry
+    // Assert
     assert_eq!(cluster.get_node(3).storage().last_log_index(), 2);
     assert_eq!(cluster.get_node(3).commit_index(), 2); // Committed
 
-    // Heal partition - reconnect all nodes
+    // Act
     cluster.heal_partition();
-
-    // Old leader (node 1) receives heartbeat from new leader (node 3)
     cluster
         .get_node_mut(3)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
 
-    // Assert - Node 1 steps down and syncs with new leader
+    // Assert
     assert_eq!(*cluster.get_node(1).role(), NodeState::Follower);
-
-    // Node 1's uncommitted entry is overwritten
     assert_eq!(cluster.get_node(1).storage().last_log_index(), 2);
     let entry2_node1 = cluster.get_node(1).storage().get_entry(2).unwrap();
     if let EntryType::Command(ref p) = entry2_node1.entry_type {
-        assert_eq!(p, "SET z=3"); // Overwritten
+        assert_eq!(p, "SET z=3");
     }
 
-    // All nodes have consistent logs
     for node_id in 1..=5 {
         assert_eq!(cluster.get_node(node_id).storage().last_log_index(), 2);
         assert_eq!(cluster.get_node(node_id).commit_index(), 2);
@@ -101,8 +97,6 @@ fn test_liveness_network_partition_recovery() {
             assert_eq!(p, "SET z=3");
         }
     }
-
-    // State machines are consistent
     for node_id in 1..=5 {
         assert_eq!(
             cluster.get_node(node_id).state_machine().get("x"),
@@ -112,6 +106,6 @@ fn test_liveness_network_partition_recovery() {
             cluster.get_node(node_id).state_machine().get("z"),
             Some("3")
         );
-        assert_eq!(cluster.get_node(node_id).state_machine().get("y"), None); // Uncommitted
+        assert_eq!(cluster.get_node(node_id).state_machine().get("y"), None);
     }
 }

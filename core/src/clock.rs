@@ -5,23 +5,17 @@
 use core::cmp::Ordering;
 use core::ops::{Add, Sub};
 
-/// Trait for abstracting time, allowing deterministic testing
-/// and different clock implementations (system time, mock time, embassy time)
 pub trait Clock {
-    /// The type representing an instant in time
     type Instant: Copy + Ord + Add<u64, Output = Self::Instant> + Sub<Output = u64>;
 
-    /// Get the current time
     fn now(&self) -> Self::Instant;
 
-    /// Check if a duration has elapsed since an instant
     fn has_elapsed(&self, instant: Self::Instant, duration_millis: u64) -> bool {
         let elapsed = self.now() - instant;
         elapsed >= duration_millis
     }
 }
 
-/// Instant type for MockClock and SystemClock
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Instant(u64);
 

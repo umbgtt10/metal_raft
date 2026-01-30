@@ -21,7 +21,6 @@ use crate::{
     types::{LogIndex, NodeId},
 };
 
-/// Builder for constructing a RaftNode with proper initialization order
 pub struct RaftNodeBuilder<S, SM, P> {
     id: NodeId,
     storage: S,
@@ -36,31 +35,27 @@ where
     S: Storage<Payload = P>,
     SM: StateMachine<Payload = P>,
 {
-    /// Create a new builder with id, storage, and state machine
     pub fn new(id: NodeId, storage: S, state_machine: SM) -> Self {
         Self {
             id,
             storage,
             state_machine,
-            snapshot_threshold: 10,      // Default threshold
-            lease_duration_millis: 5000, // Default: 5 seconds
+            snapshot_threshold: 10,
+            lease_duration_millis: 5000,
             _phantom: core::marker::PhantomData,
         }
     }
 
-    /// Configure snapshot threshold (default: 10)
     pub fn with_snapshot_threshold(mut self, threshold: LogIndex) -> Self {
         self.snapshot_threshold = threshold;
         self
     }
 
-    /// Configure lease duration (default: 5000ms). Must be less than election timeout.
     pub fn with_lease_duration(mut self, lease_duration_millis: u64) -> Self {
         self.lease_duration_millis = lease_duration_millis;
         self
     }
 
-    /// Add election manager (with embedded timer service)
     pub fn with_election<C, TS>(
         self,
         election: ElectionManager<C, TS>,
@@ -83,7 +78,6 @@ where
     }
 }
 
-/// Builder after election manager is added
 pub struct RaftNodeBuilderWithElection<S, SM, P, C, TS>
 where
     C: NodeCollection,
@@ -108,7 +102,6 @@ where
     C: NodeCollection,
     TS: TimerService,
 {
-    /// Add log replication manager
     pub fn with_replication<M>(
         self,
         replication: LogReplicationManager<M>,
@@ -133,7 +126,6 @@ where
     }
 }
 
-/// Builder after replication manager is added
 pub struct RaftNodeBuilderWithReplication<S, SM, P, C, TS, M>
 where
     C: NodeCollection,
@@ -161,13 +153,11 @@ where
     TS: TimerService,
     M: MapCollection,
 {
-    /// Configure lease duration (default: 5000ms). Must be less than election timeout.
     pub fn with_lease_duration(mut self, lease_duration_millis: u64) -> Self {
         self.lease_duration_millis = lease_duration_millis;
         self
     }
 
-    /// Add transport, peers, observer, and clock to complete construction
     pub fn with_transport<T, L, CC, O, CCC, CLK>(
         self,
         transport: T,

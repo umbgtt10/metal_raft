@@ -37,12 +37,9 @@ pub enum ClientError {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReadError {
-    /// Node is not the leader or does not have a valid lease
     NotLeaderOrNoLease { leader_hint: Option<NodeId> },
 }
 
-/// MessageHandler handles all Raft message processing.
-/// This is a zero-sized stateless type that separates message handling logic from RaftNode.
 pub struct MessageHandler<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
 where
     P: Clone,
@@ -237,7 +234,6 @@ where
         election::start_election(ctx);
     }
 
-    /// Add a server to the cluster configuration
     #[allow(clippy::type_complexity)]
     pub fn add_server(
         &self,
@@ -252,7 +248,6 @@ where
         admin::add_server(ctx, node_id)
     }
 
-    /// Remove a server from the cluster configuration
     #[allow(clippy::type_complexity)]
     pub fn remove_server(
         &self,

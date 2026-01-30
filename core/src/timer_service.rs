@@ -8,10 +8,9 @@ pub enum TimerKind {
     Heartbeat,
 }
 
-/// Result of checking expired timers
 #[derive(Debug)]
 pub struct ExpiredTimers {
-    timers: [Option<TimerKind>; 2], // Max 2 timers can fire
+    timers: [Option<TimerKind>; 2],
     count: usize,
 }
 
@@ -46,15 +45,8 @@ impl Default for ExpiredTimers {
 }
 
 pub trait TimerService {
-    /// Start or reset the election timer
     fn reset_election_timer(&mut self);
-
-    /// Start or reset the heartbeat timer (leader only)
     fn reset_heartbeat_timer(&mut self);
-
-    /// Stop all timers
     fn stop_timers(&mut self);
-
-    /// Check which timers have expired
     fn check_expired(&self) -> ExpiredTimers;
 }

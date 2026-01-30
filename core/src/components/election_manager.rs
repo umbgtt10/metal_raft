@@ -14,7 +14,6 @@ use crate::{
     types::{LogIndex, NodeId, Term},
 };
 
-/// Manages elections: voting, vote counting, state transitions
 pub struct ElectionManager<C, TS>
 where
     C: NodeCollection,
@@ -40,8 +39,6 @@ where
         }
     }
 
-    /// Start pre-vote phase - returns pre-vote request message to broadcast
-    /// Does NOT increment term or modify persistent state
     pub fn start_pre_vote<P, L, CC, S>(
         &mut self,
         node_id: NodeId,
@@ -55,25 +52,22 @@ where
         S: Storage<Payload = P, LogEntryCollection = L> + Clone,
     {
         self.pre_votes_received.clear();
-        self.pre_votes_received.push(node_id).unwrap(); // Pre-vote for self
+        self.pre_votes_received.push(node_id).unwrap();
         self.in_pre_vote = true;
 
         self.timer_service.reset_election_timer();
 
         RaftMsg::PreVoteRequest {
-            term: current_term, // Use current term, don't increment
+            term: current_term,
             candidate_id: node_id,
             last_log_index: storage.last_log_index(),
             last_log_term: storage.last_log_term(),
         }
     }
 
-    /// Handle incoming pre-vote request - returns response message
-    /// Does NOT modify voted_for or increment term
     pub fn handle_pre_vote_request<P, L, CC, S>(
         &mut self,
         term: Term,
-        _candidate_id: NodeId,
         last_log_index: LogIndex,
         last_log_term: Term,
         current_term: Term,
@@ -85,16 +79,9 @@ where
         CC: ChunkCollection + Clone,
         S: Storage<Payload = P, LogEntryCollection = L> + Clone,
     {
-        // Grant pre-vote if:
-        // 1. Candidate's term >= our term (we'd consider updating)
-        // 2. Candidate's log is at least as up-to-date
-
         let vote_granted = if term < current_term {
-            false // Stale term
+            false
         } else {
-            // Check if we could grant a real vote (log up-to-date check)
-            // For pre-vote, we don't check voted_for since the real election
-            // would be at a higher term anyway
             Self::is_log_up_to_date::<P, L, S>(last_log_index, last_log_term, storage)
         };
 
@@ -216,7 +203,7 @@ where
         config: &Configuration<NC>,
     ) -> bool {
         if term > *current_term {
-            return false; // Caller should step down
+            return false;
         }
 
         if *role != NodeState::Candidate || term != *current_term || !vote_granted {
@@ -227,10 +214,9 @@ where
 
         let votes = self.votes_received.len();
 
-        config.has_quorum(votes) // Won election if majority
+        config.has_quorum(votes)
     }
 
-    /// Check if candidate's log is at least as up-to-date as ours
     fn is_log_up_to_date<P, L, S>(
         candidate_last_log_index: LogIndex,
         candidate_last_log_term: Term,
@@ -260,19 +246,16 @@ where
         L: LogEntryCollection,
         S: Storage<Payload = P, LogEntryCollection = L>,
     {
-        // Reject if term is stale
         if term < current_term {
             return false;
         }
 
-        // Reject if already voted for someone else
         if let Some(voted) = storage.voted_for() {
             if voted != candidate_id {
                 return false;
             }
         }
 
-        // Check if candidate's log is at least as up-to-date
         Self::is_log_up_to_date::<P, L, S>(last_log_index, last_log_term, storage)
     }
 

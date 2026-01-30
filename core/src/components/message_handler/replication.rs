@@ -49,7 +49,6 @@ pub fn handle_append_entries<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
 
     common::reset_election_timer_if_valid_term(ctx, term);
 
-    // Track the leader - the sender of valid AppendEntries is the leader
     *ctx.current_leader = Some(from);
 
     let (response, config_changes) = ctx.replication.handle_append_entries(
@@ -65,15 +64,6 @@ pub fn handle_append_entries<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
         ctx.observer,
         *ctx.id,
     );
-    // Note: apply_config_changes logic is in admin.rs. But we need it here?
-    // This is a circular dependency. Admin -> Common?
-    // apply_config_changes calls config_manager.apply_changes.
-    // It's simple enough to be in common or duplicated or in replication?
-    // Let's put apply_config_changes in common.rs!
-
-    // For now, assuming it's in common or handled here.
-    // If apply_config_changes is in common, we are good.
-    // Let's assume common::apply_config_changes exists.
     common::apply_config_changes(ctx, config_changes);
     common::send(ctx, from, response);
 }
@@ -122,13 +112,10 @@ pub fn handle_append_entries_response<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>
             ctx.observer
                 .commit_advanced(*ctx.id, old_commit_index, new_commit_index);
 
-            // Grant leader lease when commit advances (quorum acknowledgment)
             ctx.leader_lease.grant();
 
-            // Apply any configuration changes
             common::apply_config_changes(ctx, config_changes);
 
-            // Check if we should create a snapshot after commit advances
             if should_create_snapshot(ctx) {
                 let _ = create_snapshot_internal(ctx);
             }
@@ -205,7 +192,6 @@ pub fn handle_install_snapshot_response<T, S, P, SM, C, L, CC, M, TS, O, CCC, CL
     }
 
     if *ctx.role == NodeState::Leader && term == *ctx.current_term {
-        // Get the snapshot metadata to know last_included_index
         if let Some(snapshot_metadata) = ctx.storage.snapshot_metadata() {
             ctx.replication.handle_install_snapshot_response(
                 from,
@@ -254,13 +240,11 @@ pub fn send_append_entries_to_followers<T, S, P, SM, C, L, CC, M, TS, O, CCC, CL
     CCC: ConfigChangeCollection,
     CLK: Clock,
 {
-    // Collect peer IDs first to avoid borrowing issues (excluding self)
     let mut ids = C::new();
     for peer in ctx.config_manager.config().peers(*ctx.id) {
         ids.push(peer).ok();
     }
 
-    // Now send to each peer
     for peer in ids.iter() {
         let msg = ctx
             .replication

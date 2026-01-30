@@ -4,15 +4,6 @@
 
 pub use crate::collections::error::CollectionError;
 
-/// Trait for collections of chunks used in snapshot transfer
-///
-/// This abstraction allows core Raft to remain agnostic about:
-/// - Allocation strategy (heap vs stack vs static)
-/// - Element size (bytes, words, etc.)
-/// - Storage mechanism
-///
-/// Similar to LogEntryCollection and NodeCollection, this enables
-/// the same Raft core to work with different chunk representations.
 pub trait ChunkCollection {
     type Item: Copy;
 

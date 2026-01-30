@@ -18,7 +18,6 @@ use crate::{
     types::{LogIndex, NodeId, Term},
 };
 
-/// Manages log replication: AppendEntries, commit index, state machine application
 pub struct LogReplicationManager<M>
 where
     M: MapCollection,
@@ -27,7 +26,6 @@ where
     match_index: M,
     commit_index: LogIndex,
     last_applied: LogIndex,
-    /// Servers that are catching up and should not participate in quorum
     catching_up_servers: M,
 }
 
@@ -73,7 +71,6 @@ where
         &mut self.match_index
     }
 
-    /// Initialize follower tracking when becoming leader
     pub fn initialize_leader_state<P, L, S, I>(&mut self, peers: I, storage: &S)
     where
         S: Storage<Payload = P, LogEntryCollection = L>,
@@ -86,7 +83,6 @@ where
         }
     }
 
-    /// Get message to send to a follower (AppendEntries or InstallSnapshot)
     pub fn get_append_entries_for_peer<P, L, C, S>(
         &self,
         peer: NodeId,
@@ -103,9 +99,7 @@ where
         let first_idx = storage.first_log_index();
         let current_term = storage.current_term();
 
-        // Check if follower needs a snapshot
         if next_idx < first_idx {
-            // Get chunk from storage (full snapshot for single-chunk transfer)
             if let Some(chunk) = storage.get_snapshot_chunk(0, usize::MAX) {
                 if let Some(metadata) = storage.snapshot_metadata() {
                     return RaftMsg::InstallSnapshot {
@@ -121,11 +115,9 @@ where
             }
         }
 
-        // Send normal AppendEntries
         self.get_append_entries_for_follower(peer, current_term, storage)
     }
 
-    /// Get entries to send to a follower (internal method)
     pub fn get_append_entries_for_follower<P, L, C, S>(
         &self,
         peer: NodeId,
@@ -143,19 +135,14 @@ where
         let prev_log_term = if prev_log_index == 0 {
             0
         } else if let Some(entry) = storage.get_entry(prev_log_index) {
-            // Entry exists in log
             entry.term
         } else if let Some(snapshot) = storage.load_snapshot() {
-            // Entry was compacted - check if it's the snapshot point
             if prev_log_index == snapshot.metadata.last_included_index {
                 snapshot.metadata.last_included_term
             } else {
-                // Entry is before snapshot - this shouldn't happen in normal operation
-                // The follower needs the snapshot via InstallSnapshot RPC
                 0
             }
         } else {
-            // No entry and no snapshot - shouldn't happen
             0
         };
 
@@ -170,7 +157,6 @@ where
         }
     }
 
-    /// Handle incoming AppendEntries - returns response message
     #[allow(clippy::too_many_arguments)]
     pub fn handle_append_entries<P, L, C, CC, S, SM, O>(
         &mut self,
@@ -195,14 +181,12 @@ where
         CC: ConfigChangeCollection,
         O: Observer<Payload = P, LogEntries = L, ChunkCollection = C>,
     {
-        // Update term if necessary
         if term > *current_term {
             *current_term = term;
             storage.set_current_term(term);
             *role = NodeState::Follower;
             storage.set_voted_for(None);
         } else if term == *current_term && *role == NodeState::Candidate {
-            // Candidate receives AppendEntries from valid leader at same term - step down
             *role = NodeState::Follower;
         }
 
@@ -233,7 +217,6 @@ where
         (response, config_changes)
     }
 
-    /// Handle AppendEntries response from follower
     #[allow(clippy::too_many_arguments)]
     pub fn handle_append_entries_response<P, L, S, SM, C, CC, O, CHK>(
         &mut self,
@@ -256,13 +239,11 @@ where
         CHK: ChunkCollection + Clone,
     {
         if success {
-            // Only update if match_index actually advanced
             let current_match = self.match_index.get(from).unwrap_or(0);
             if match_index > current_match {
                 self.match_index.insert(from, match_index);
                 self.next_index.insert(from, match_index + 1);
 
-                // Check if this server has caught up and can participate in quorum
                 self.check_and_promote_caught_up_server(from);
 
                 return self.advance_commit_index(
@@ -275,7 +256,6 @@ where
                 );
             }
         } else {
-            // Decrement next_index on failure
             let next = self.next_index.get(from).unwrap_or(1);
             if next > 1 {
                 self.next_index.insert(from, next - 1);
@@ -305,12 +285,10 @@ where
         O: Observer<Payload = P, LogEntries = L, ChunkCollection = CHK>,
         CHK: ChunkCollection + Clone,
     {
-        // Check log consistency
         if !self.check_log_consistency(prev_log_index, prev_log_term, storage) {
             return None;
         }
 
-        // Append entries if any
         if !entries.is_empty() {
             let last_index = storage.last_log_index();
             if last_index > prev_log_index {
@@ -319,7 +297,6 @@ where
             storage.append_entries(entries.as_slice());
         }
 
-        // Update commit index
         if leader_commit > self.commit_index {
             self.commit_index = leader_commit.min(storage.last_log_index());
             let config_changes =
@@ -343,19 +320,16 @@ where
             return true;
         }
 
-        // First try to get the entry from the log
         if let Some(entry) = storage.get_entry(prev_log_index) {
             return entry.term == prev_log_term;
         }
 
-        // If entry not in log, check if it's at the snapshot point
         if let Some(snapshot_metadata) = storage.snapshot_metadata() {
             if prev_log_index == snapshot_metadata.last_included_index {
                 return prev_log_term == snapshot_metadata.last_included_term;
             }
         }
 
-        // Entry not found in log or snapshot
         false
     }
 
@@ -436,7 +410,6 @@ where
         CC::new()
     }
 
-    /// Handle incoming InstallSnapshot RPC - returns response message
     #[allow(clippy::too_many_arguments)]
     pub fn handle_install_snapshot<P, L, C, S, SM>(
         &mut self,
@@ -460,7 +433,6 @@ where
         SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
         S::SnapshotBuilder: SnapshotBuilder<Output = S::SnapshotData, ChunkInput = C>,
     {
-        // Reject if term is stale
         if term < *current_term {
             return RaftMsg::InstallSnapshotResponse {
                 term: *current_term,
@@ -468,18 +440,15 @@ where
             };
         }
 
-        // Update term and convert to follower if needed
         if term > *current_term {
             *current_term = term;
             storage.set_current_term(term);
             storage.set_voted_for(None);
             *role = NodeState::Follower;
         } else if term == *current_term && *role == NodeState::Candidate {
-            // Candidate receives snapshot from a valid leader at same term - step down
             *role = NodeState::Follower;
         }
 
-        // Check if snapshot is stale (already have more recent snapshot)
         if let Some(current_snapshot_metadata) = storage.snapshot_metadata() {
             if last_included_index <= current_snapshot_metadata.last_included_index {
                 return RaftMsg::InstallSnapshotResponse {
@@ -489,7 +458,6 @@ where
             }
         }
 
-        // Handle chunked transfer
         match storage.apply_snapshot_chunk(
             offset,
             data,
@@ -499,15 +467,11 @@ where
         ) {
             Ok(_) => {
                 if done {
-                    // Snapshot completion logic
                     if let Some(snapshot) = storage.load_snapshot() {
-                        // Restore state machine
                         let _ = state_machine.restore_from_snapshot(&snapshot.data);
 
-                        // Discard old log entries covered by snapshot
                         storage.discard_entries_before(last_included_index + 1);
 
-                        // Update commit/applied indices
                         self.commit_index = self.commit_index.max(last_included_index);
                         self.last_applied = self.last_applied.max(last_included_index);
                     }
@@ -525,7 +489,6 @@ where
         }
     }
 
-    /// Handle InstallSnapshotResponse from follower
     pub fn handle_install_snapshot_response(
         &mut self,
         peer: NodeId,
@@ -533,35 +496,27 @@ where
         last_included_index: LogIndex,
     ) {
         if success {
-            // Update next_index and match_index to snapshot point
             self.next_index.insert(peer, last_included_index + 1);
             self.match_index.insert(peer, last_included_index);
 
-            // Check if this server has caught up
             self.check_and_promote_caught_up_server(peer);
         }
-        // On failure, next_index stays the same and leader will retry
     }
 
-    /// Mark a server as catching up (non-voting until it catches up)
     pub fn mark_server_catching_up(&mut self, node_id: NodeId) {
         self.catching_up_servers.insert(node_id, 1);
     }
 
-    /// Check if a server has caught up and promote it to voting status
     fn check_and_promote_caught_up_server(&mut self, node_id: NodeId) {
-        // Only check servers that are currently marked as catching up
         if self.catching_up_servers.get(node_id).is_some() {
             let match_idx = self.match_index.get(node_id).unwrap_or(0);
 
-            // Server has caught up when its match_index reaches commit_index
             if match_idx >= self.commit_index {
                 self.catching_up_servers.remove(node_id);
             }
         }
     }
 
-    /// Check if a server is currently catching up
     pub fn is_catching_up(&self, node_id: NodeId) -> bool {
         self.catching_up_servers.get(node_id).is_some()
     }

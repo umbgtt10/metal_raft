@@ -10,231 +10,176 @@ use raft_validation::timeless_test_cluster::TimelessTestCluster;
 
 #[test]
 fn test_add_server_replicates_and_commits() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(3);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
-    // Leader submits add_server via Event
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::AddServer(4)));
     let config_index = cluster.get_node(1).storage().last_log_index();
 
-    // Replicate to followers
     cluster.deliver_messages();
 
-    // Verify the entry is in all nodes' logs
+    // Assert
     for node_id in [1, 2, 3] {
-        let node = cluster.get_node(node_id);
-        assert!(
-            node.storage().last_log_index() >= config_index,
-            "Node {} should have config entry",
-            node_id
-        );
+        assert!(cluster.get_node(node_id).storage().last_log_index() >= config_index,);
     }
-
-    // Leader should commit once majority has replicated
-    assert!(
-        cluster.get_node(1).is_committed(config_index),
-        "Config change should be committed"
-    );
+    assert!(cluster.get_node(1).is_committed(config_index),);
 }
 
 #[test]
 fn test_add_server_updates_configuration() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(3);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
-    // Verify initial config has 3 nodes (1 self + 2 peers)
+    // Assert
     assert_eq!(cluster.get_node(1).config().size(), 3);
 
-    // Add node 4
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::AddServer(4)));
-
-    // Replicate and commit
     cluster.deliver_messages();
 
-    // Verify leader has new config (1 self + 3 peers)
-    assert_eq!(
-        cluster.get_node(1).config().size(),
-        4,
-        "Leader should have 4 members after commit"
-    );
-    assert!(
-        cluster.get_node(1).config().contains(4),
-        "Config should contain node 4"
-    );
+    // Assert
+    assert_eq!(cluster.get_node(1).config().size(), 4,);
+    assert!(cluster.get_node(1).config().contains(4),);
 
-    // Verify pending flag is cleared after commit
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::AddServer(5)));
     let last_index = cluster.get_node(1).storage().last_log_index();
-    assert!(
-        last_index > 0,
-        "Should allow another config change after first commits"
-    );
+
+    // Assert
+    assert!(last_index > 0);
 }
 
 #[test]
 fn test_remove_server_replicates_and_commits() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(3);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
-
-    // Remove node 3
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::RemoveServer(3)));
     let config_index = cluster.get_node(1).storage().last_log_index();
-
-    // Replicate to followers
     cluster.deliver_messages();
 
-    // Verify committed on leader
-    assert!(
-        cluster.get_node(1).is_committed(config_index),
-        "Config change should be committed"
-    );
+    // Assert
+    assert!(cluster.get_node(1).is_committed(config_index),);
 }
 
 #[test]
 fn test_remove_server_updates_configuration() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(3);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
-    // Verify initial config has 3 nodes (1 self + 2 peers)
+    // Assert
     assert_eq!(cluster.get_node(1).config().size(), 3);
 
-    // Remove node 3
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::RemoveServer(3)));
-
-    // Replicate and commit
     cluster.deliver_messages();
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
 
-    // Verify leader has new config (1 self + 1 peer)
-    assert_eq!(
-        cluster.get_node(1).config().size(),
-        2,
-        "Leader should have 2 members after commit"
-    );
-    assert!(
-        !cluster.get_node(1).config().contains(3),
-        "Config should not contain node 3"
-    );
-
-    // Verify quorum calculation updated (2 nodes, quorum = 2)
+    // Assert
+    assert_eq!(cluster.get_node(1).config().size(), 2,);
+    assert!(!cluster.get_node(1).config().contains(3));
     assert_eq!(cluster.get_node(1).config().quorum_size(), 2);
 }
 
 #[test]
 fn test_follower_applies_committed_config_change() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(3);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
-
-    // Add node 4 on leader
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::AddServer(4)));
-
-    // Replicate to followers
     cluster.deliver_messages();
-    // Send heartbeat to propagate commit index
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
-    // Verify follower node 2 also has new config
-    assert_eq!(
-        cluster.get_node(2).config().size(),
-        4,
-        "Follower should have 4 members"
-    );
-    assert!(
-        cluster.get_node(2).config().contains(4),
-        "Follower should have node 4 in config"
-    );
+
+    // Assert
+    assert_eq!(cluster.get_node(2).config().size(), 4);
+    assert!(cluster.get_node(2).config().contains(4));
 }
 
 #[test]
 fn test_config_change_survives_leadership_change() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(3);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
-
-    // Add node 4
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::AddServer(4)));
-
-    // Replicate and commit
     cluster.deliver_messages();
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
-
-    // Node 2 becomes new leader
     cluster
         .get_node_mut(2)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
-    // New leader should still have the config with 4 nodes
-    assert_eq!(
-        cluster.get_node(2).config().size(),
-        4,
-        "New leader should have committed config"
-    );
+    // Assert
+    assert_eq!(cluster.get_node(2).config().size(), 4,);
     assert!(cluster.get_node(2).config().contains(4));
 }
 
 #[test]
 fn test_catching_up_server_does_not_block_commits() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(3);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
-    // Replicate some entries to establish a baseline
     for i in 1..=10 {
         cluster
             .get_node_mut(1)
@@ -243,18 +188,13 @@ fn test_catching_up_server_does_not_block_commits() {
     cluster.deliver_messages();
 
     let commit_before_add = cluster.get_node(1).commit_index();
-    assert_eq!(
-        commit_before_add, 10,
-        "Should have committed 10 entries before adding server"
-    );
+    assert_eq!(commit_before_add, 10);
 
-    // Add node 4 (which will be marked as catching up)
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::AddServer(4)));
     cluster.deliver_messages();
-
-    // Send more commands - these should commit even though node 4 hasn't caught up yet
     for i in 11..=20 {
         cluster
             .get_node_mut(1)
@@ -262,47 +202,33 @@ fn test_catching_up_server_does_not_block_commits() {
     }
     cluster.deliver_messages();
 
-    // Verify that commits can proceed with just nodes 1, 2, 3 (majority of voting members)
-    // Node 4 is catching up and not counted in quorum
+    // Assert
     let commit_after_add = cluster.get_node(1).commit_index();
-    assert!(
-        commit_after_add > commit_before_add,
-        "Should be able to commit new entries while node 4 is catching up. \
-         Commit before: {}, after: {}",
-        commit_before_add,
-        commit_after_add
-    );
-
-    // Verify node 4 is indeed in the configuration
+    assert!(commit_after_add > commit_before_add);
     assert_eq!(cluster.get_node(1).config().size(), 4);
     assert!(cluster.get_node(1).config().contains(4));
 }
 
 #[test]
 fn test_catching_up_server_promoted_after_catching_up() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(3);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
-
-    // Establish some log history
     for i in 1..=5 {
         cluster
             .get_node_mut(1)
             .on_event(Event::ClientCommand(format!("cmd_{}", i)));
     }
     cluster.deliver_messages();
-
-    // Add node 4 (starts catching up)
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::AddServer(4)));
     cluster.deliver_messages();
-
-    // Send entries to node 4 until it catches up
     for _ in 0..10 {
         cluster
             .get_node_mut(1)
@@ -310,59 +236,40 @@ fn test_catching_up_server_promoted_after_catching_up() {
         cluster.deliver_messages();
     }
 
-    // At this point, node 4 should have caught up (match_index >= commit_index)
-    // and should be participating in quorum
-
-    // Now if we partition nodes 2 and 3, commits should still fail
-    // because we'd only have nodes 1 and 4 (not a majority of all 4 nodes)
     cluster.partition(&[1, 4], &[2, 3]);
 
     let commit_before_partition = cluster.get_node(1).commit_index();
-
     cluster
         .get_node_mut(1)
         .on_event(Event::ClientCommand("after_partition".to_string()));
     cluster.deliver_messages();
 
-    // Should not commit with just 2 out of 4 nodes
+    // Assert
     let commit_after_partition = cluster.get_node(1).commit_index();
-    assert_eq!(
-        commit_before_partition, commit_after_partition,
-        "Should not commit with minority (2/4 nodes)"
-    );
+    assert_eq!(commit_before_partition, commit_after_partition);
 
-    // Heal partition
+    // Act
     cluster.heal_partition();
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
 
-    // Now commits should succeed again
+    // Assert
     let final_commit = cluster.get_node(1).commit_index();
-    assert!(
-        final_commit > commit_after_partition,
-        "Should commit after healing partition. Before: {}, After: {}",
-        commit_after_partition,
-        final_commit
-    );
+    assert!(final_commit > commit_after_partition);
 }
-
-// ============================================================================
-// Task 3.3: Single-Server Edge Case Tests
-// ============================================================================
 
 #[test]
 fn test_partition_during_config_change() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(5);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
-
-    // Establish some log history
     for i in 1..=5 {
         cluster
             .get_node_mut(1)
@@ -371,80 +278,59 @@ fn test_partition_during_config_change() {
     cluster.deliver_messages();
 
     let commit_before_partition = cluster.get_node(1).commit_index();
-
-    // Initiate config change to add node 6
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::AddServer(6)));
 
     let config_index = cluster.get_node(1).storage().last_log_index();
-
-    // Immediately partition the network: leader (node 1) is isolated with only node 2
-    // Nodes 3, 4, 5 form the other partition
     cluster.partition(&[1, 2], &[3, 4, 5]);
-
-    // Try to replicate the config change
     cluster.deliver_messages();
 
-    // Config change should NOT commit because we don't have majority
-    // (2 out of 5 nodes is not a majority)
-    assert!(
-        !cluster.get_node(1).is_committed(config_index),
-        "Config change should not commit without majority"
-    );
+    // Assert
+    assert!(!cluster.get_node(1).is_committed(config_index));
 
-    // Leader should still be able to append entries, but not commit them
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ClientCommand("partitioned_cmd".to_string()));
     cluster.deliver_messages();
 
-    // Commit index should not advance
-    assert_eq!(
-        cluster.get_node(1).commit_index(),
-        commit_before_partition,
-        "Commit index should not advance during partition"
-    );
+    // Assert
+    assert_eq!(cluster.get_node(1).commit_index(), commit_before_partition);
 
-    // Heal the partition
+    // Act
     cluster.heal_partition();
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
 
-    // Now the config change should commit
-    assert!(
-        cluster.get_node(1).is_committed(config_index),
-        "Config change should commit after partition heals"
-    );
-
-    // Verify configuration was applied
+    // Assert
+    assert!(cluster.get_node(1).is_committed(config_index));
     assert_eq!(cluster.get_node(1).config().size(), 6);
     assert!(cluster.get_node(1).config().contains(6));
 }
 
 #[test]
 fn test_snapshot_preserves_config() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(3);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
-
-    // Add node 4 to cluster
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::AddServer(4)));
     cluster.deliver_messages();
 
-    // Verify node 4 is in configuration
+    // Assert
     assert_eq!(cluster.get_node(1).config().size(), 4);
     assert!(cluster.get_node(1).config().contains(4));
 
-    // Generate enough entries to trigger snapshot (threshold is 10 by default)
+    // Act
     for i in 1..=15 {
         cluster
             .get_node_mut(1)
@@ -452,90 +338,72 @@ fn test_snapshot_preserves_config() {
     }
     cluster.deliver_messages();
 
-    // Verify node 1 has created a snapshot
-    let snapshot = cluster.get_node(1).storage().load_snapshot();
-    assert!(snapshot.is_some(), "Node 1 should have created a snapshot");
+    // Assert
+    assert!(cluster.get_node(1).storage().load_snapshot().is_some());
+    assert_eq!(cluster.get_node(1).config().size(), 4);
+    assert!(cluster.get_node(1).config().contains(4));
 
-    // The critical test: after snapshot creation, configuration should still be accessible
-    // Config changes are stored in the log and survive snapshot creation
-    assert_eq!(
-        cluster.get_node(1).config().size(),
-        4,
-        "Configuration should remain accessible after snapshot creation"
-    );
-    assert!(
-        cluster.get_node(1).config().contains(4),
-        "Node 4 should still be in config after snapshot"
-    );
-
-    // Additional entries after snapshot should still work with new config
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ClientCommand("post_snapshot_cmd".to_string()));
     cluster.deliver_messages();
 
     let final_index = cluster.get_node(1).storage().last_log_index();
-    assert!(
-        cluster.get_node(1).is_committed(final_index),
-        "Should commit entries after snapshot with updated config"
-    );
+    assert!(cluster.get_node(1).is_committed(final_index));
 }
 
 #[test]
 fn test_remove_majority_of_servers() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(5);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
-
-    // Sequentially remove nodes 5, 4, 3 (going from 5 nodes down to 2)
-    // Each removal must commit before the next can start
-
-    // Remove node 5 (5 -> 4 nodes)
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::RemoveServer(5)));
     cluster.deliver_messages();
+
+    // Assert
     assert_eq!(cluster.get_node(1).config().size(), 4);
     assert!(!cluster.get_node(1).config().contains(5));
 
-    // Remove node 4 (4 -> 3 nodes)
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::RemoveServer(4)));
     cluster.deliver_messages();
+
+    // Assert
     assert_eq!(cluster.get_node(1).config().size(), 3);
     assert!(!cluster.get_node(1).config().contains(4));
 
-    // Remove node 3 (3 -> 2 nodes)
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::RemoveServer(3)));
     cluster.deliver_messages();
+
+    // Assert
     assert_eq!(cluster.get_node(1).config().size(), 2);
     assert!(!cluster.get_node(1).config().contains(3));
 
-    // Verify the 2-node cluster can still commit
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ClientCommand("after_removals".to_string()));
     cluster.deliver_messages();
-
     let final_index = cluster.get_node(1).storage().last_log_index();
-    assert!(
-        cluster.get_node(1).is_committed(final_index),
-        "2-node cluster should still be able to commit"
-    );
 
-    // Verify both remaining nodes have the same log
-    let node1_last = cluster.get_node(1).storage().last_log_index();
-    let node2_last = cluster.get_node(2).storage().last_log_index();
+    // Assert
+    assert!(cluster.get_node(1).is_committed(final_index));
     assert_eq!(
-        node1_last, node2_last,
-        "Remaining nodes should have identical logs"
+        cluster.get_node(1).storage().last_log_index(),
+        cluster.get_node(2).storage().last_log_index()
     );
 }
 
@@ -660,112 +528,69 @@ fn test_config_change_with_leader_crash() {
 
 #[test]
 fn test_leader_removes_self_and_steps_down() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(3);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
-    // Verify node 1 is the leader
+    // Assert
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
 
-    // Leader removes itself
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::RemoveServer(1)));
     let config_index = cluster.get_node(1).storage().last_log_index();
-
-    // Replicate to followers
     cluster.deliver_messages();
 
-    // Verify the entry is in all nodes' logs
+    // Assert
     for node_id in [1, 2, 3] {
-        let node = cluster.get_node(node_id);
-        assert!(
-            node.storage().last_log_index() >= config_index,
-            "Node {} should have config entry",
-            node_id
-        );
+        assert!(cluster.get_node(node_id).storage().last_log_index() >= config_index);
     }
+    assert!(cluster.get_node(1).is_committed(config_index));
+    assert_eq!(*cluster.get_node(1).role(), NodeState::Follower);
+    assert_eq!(cluster.get_node(1).config().size(), 2);
 
-    // Node 1 should have committed and stepped down
-    assert!(
-        cluster.get_node(1).is_committed(config_index),
-        "Node 1 should have committed config change"
-    );
-    assert_eq!(
-        *cluster.get_node(1).role(),
-        NodeState::Follower,
-        "Node 1 should have stepped down after removing itself"
-    );
-
-    // Node 1's config should reflect removal
-    assert_eq!(
-        cluster.get_node(1).config().size(),
-        2,
-        "Node 1 should have 2 nodes in config after self-removal"
-    );
-
-    // Trigger new election among remaining nodes
+    // Act
     cluster
         .get_node_mut(2)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
-    // Find the new leader
     let new_leader = [2, 3]
         .iter()
         .find(|&&node_id| *cluster.get_node(node_id).role() == NodeState::Leader)
         .copied()
         .expect("Should have elected a new leader from remaining nodes");
 
-    // New leader sends a client command to commit entries from its term
-    // This triggers commit of the RemoveServer entry (Raft safety: can only commit own term)
     cluster
         .get_node_mut(new_leader)
         .on_event(Event::ClientCommand("trigger_commit".to_string()));
     cluster.deliver_messages();
 
-    // Propagate commit index to all nodes
     cluster
         .get_node_mut(new_leader)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
 
-    // Verify configuration was updated on all nodes
+    // Assert
     for node_id in [1, 2, 3] {
-        let node = cluster.get_node(node_id);
-        assert_eq!(
-            node.config().size(),
-            2,
-            "Node {} should have 2 nodes in config",
-            node_id
-        );
-        assert!(
-            !node.config().contains(1),
-            "Node {} config should not contain removed node 1",
-            node_id
-        );
+        assert_eq!(cluster.get_node(node_id).config().size(), 2);
+        assert!(!cluster.get_node(node_id).config().contains(1));
     }
 
-    // Verify cluster can still make progress
+    // Act
     cluster
         .get_node_mut(new_leader)
         .on_event(Event::ClientCommand("after_leader_removal".to_string()));
     cluster.deliver_messages();
 
+    // Assert
     let final_index = cluster.get_node(new_leader).storage().last_log_index();
-    assert!(
-        cluster.get_node(new_leader).is_committed(final_index),
-        "Cluster should continue operating after leader removes itself"
-    );
-
-    // Verify old leader (node 1) remains a Follower
-    assert_eq!(
-        *cluster.get_node(1).role(),
-        NodeState::Follower,
-        "Old leader should remain Follower"
-    );
+    assert!(cluster.get_node(new_leader).is_committed(final_index));
+    assert_eq!(*cluster.get_node(1).role(), NodeState::Follower);
 }

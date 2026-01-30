@@ -7,7 +7,6 @@ use raft_core::clock::{Clock, Instant};
 use raft_core::components::leader_lease::LeaderLease;
 use std::rc::Rc;
 
-/// Simple test clock that can be controlled
 #[derive(Clone)]
 struct TestClock {
     current: Rc<Cell<Instant>>,
@@ -36,82 +35,124 @@ impl Clock for TestClock {
 
 #[test]
 fn test_lease_initially_invalid() {
+    // Arrange
     let clock = TestClock::new();
     let lease = LeaderLease::new(5000, clock);
+
+    // Assert
     assert!(!lease.is_valid());
 }
 
 #[test]
 fn test_lease_valid_after_grant() {
+    // Arrange
     let clock = TestClock::new();
     let mut lease = LeaderLease::new(5000, clock);
 
+    // Act
     lease.grant();
+
+    // Assert
     assert!(lease.is_valid());
 }
 
 #[test]
 fn test_lease_expires_after_duration() {
+    // Arrange
     let clock = TestClock::new();
     let mut lease = LeaderLease::new(5000, clock.clone());
 
+    // Act
     lease.grant();
+
+    // Assert
     assert!(lease.is_valid());
 
-    // Advance time to just before expiration
+    // Act
     clock.advance(4999);
+
+    // Assert
     assert!(lease.is_valid());
 
-    // Advance to exactly expiration time
+    // Act
     clock.advance(1);
+
+    // Assert
     assert!(!lease.is_valid());
 }
 
 #[test]
 fn test_lease_can_be_renewed() {
+    // Arrange
     let clock = TestClock::new();
     let mut lease = LeaderLease::new(5000, clock.clone());
 
+    // Act
     lease.grant();
     clock.advance(3000);
+
+    // Assert
     assert!(lease.is_valid());
 
-    // Renew the lease
+    // Act
     lease.grant();
     clock.advance(3000);
-    // Should still be valid (renewed at t=3000, expires at t=8000, now at t=6000)
+
+    // Assert
     assert!(lease.is_valid());
 
+    // Act
     clock.advance(2001);
-    // Now expired (t=8001)
+
+    // Assert
     assert!(!lease.is_valid());
 }
 
 #[test]
 fn test_lease_revocation() {
+    // Arrange
     let clock = TestClock::new();
     let mut lease = LeaderLease::new(5000, clock);
 
+    // Act
     lease.grant();
+
+    // Assert
     assert!(lease.is_valid());
 
+    // Act
     lease.revoke();
+
+    // Assert
     assert!(!lease.is_valid());
 }
 
 #[test]
 fn test_time_remaining() {
+    // Arrange
     let clock = TestClock::new();
+
+    // Act
     let mut lease = LeaderLease::new(5000, clock.clone());
 
+    // Assert
     assert_eq!(lease.time_remaining_millis(), None);
 
+    // Act
     lease.grant();
+
+    // Assert
     assert_eq!(lease.time_remaining_millis(), Some(5000));
 
+    // Act
     clock.advance(2000);
+
+    // Assert
     assert_eq!(lease.time_remaining_millis(), Some(3000));
 
+    // Act
     clock.advance(3000);
+
+    // Assert
     assert_eq!(lease.time_remaining_millis(), None);
 }

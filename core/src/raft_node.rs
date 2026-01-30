@@ -52,7 +52,6 @@ where
     state_machine: SM,
     observer: O,
 
-    // Delegated responsibilities
     election: ElectionManager<C, TS>,
     replication: LogReplicationManager<M>,
     config_manager: ConfigChangeManager<C, M>,
@@ -77,7 +76,6 @@ where
     CCC: ConfigChangeCollection,
     CLK: Clock,
 {
-    /// Internal constructor - use RaftNodeBuilder instead
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_from_builder(
         id: NodeId,
@@ -97,29 +95,16 @@ where
     {
         let current_term = storage.current_term();
 
-        // CRASH RECOVERY: Restore state machine from snapshot if one exists
         let mut last_applied = 0;
         if let Some(snapshot) = storage.load_snapshot() {
-            // Restore state machine to snapshot state
             let _ = state_machine.restore_from_snapshot(&snapshot.data);
             last_applied = snapshot.metadata.last_included_index;
-
-            // Note: Storage indices are already adjusted by load_snapshot
-            // The storage implementation handles first_log_index internally
         }
 
-        // NOTE: We do NOT replay uncommitted log entries on restart.
-        // Raft safety requires that only committed entries are applied to the state machine.
-        // After a crash, we don't know which entries were committed, so we only restore
-        // from the snapshot. Uncommitted entries will be re-replicated by the leader.
-
-        // Update replication manager's last_applied index
         replication.set_last_applied(last_applied);
 
-        // Start election timer for initial Follower state
         election.timer_service_mut().reset_election_timer();
 
-        // Build configuration including self
         let mut all_members = C::new();
         let _ = all_members.push(id);
         for peer_id in peers.iter() {

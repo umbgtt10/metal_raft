@@ -23,7 +23,6 @@ use crate::{
     types::{LogIndex, NodeId},
 };
 
-/// Add a server to the cluster configuration
 #[allow(clippy::type_complexity)]
 pub fn add_server<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
     ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
@@ -46,21 +45,18 @@ where
     let is_leader = *ctx.role == NodeState::Leader;
     let commit_index = ctx.replication.commit_index();
 
-    // Validate and get the configuration change
     let change = ctx
         .config_manager
         .add_server(node_id, *ctx.id, is_leader, commit_index)?;
 
-    // Submit the change
     let index = submit_config_change(ctx, change).map_err(|_| ConfigError::NotLeader)?;
 
-    // Track the pending change
+
     ctx.config_manager.track_pending_change(index);
 
     Ok(index)
 }
 
-/// Remove a server from the cluster configuration
 #[allow(clippy::type_complexity)]
 pub fn remove_server<T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>(
     ctx: &mut MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC, CLK>,
@@ -83,15 +79,12 @@ where
     let is_leader = *ctx.role == NodeState::Leader;
     let commit_index = ctx.replication.commit_index();
 
-    // Validate and get the configuration change
     let change = ctx
         .config_manager
         .remove_server(node_id, *ctx.id, is_leader, commit_index)?;
 
-    // Submit the change
     let index = submit_config_change(ctx, change).map_err(|_| ConfigError::NotLeader)?;
 
-    // Track the pending change
     ctx.config_manager.track_pending_change(index);
 
     Ok(index)
@@ -129,7 +122,6 @@ where
     ctx.storage.append_entries(&[entry]);
     let index = ctx.storage.last_log_index();
 
-    // If we are a single node cluster (only member is self) or empty config, advance commit immediately
     if ctx.config_manager.config().members.len() <= 1 {
         let config_changes: CCC = ctx.replication.advance_commit_index(
             ctx.storage,
@@ -179,7 +171,6 @@ where
     ctx.storage.append_entries(&[entry]);
     let index = ctx.storage.last_log_index();
 
-    // If we are a single node cluster (only member is self) or empty config, advance commit immediately
     if ctx.config_manager.config().members.len() <= 1 {
         let config_changes: CCC = ctx.replication.advance_commit_index(
             ctx.storage,

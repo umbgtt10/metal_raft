@@ -146,10 +146,7 @@ fn test_safety_reject_when_already_voted() {
 
     match response {
         RaftMsg::RequestVoteResponse { vote_granted, .. } => {
-            assert!(
-                !vote_granted,
-                "Should reject when already voted for different candidate"
-            );
+            assert!(!vote_granted,);
         }
         _ => panic!("Expected RequestVoteResponse"),
     }
@@ -323,26 +320,26 @@ fn test_safety_reject_stale_vote_request() {
 }
 #[test]
 fn test_handle_pre_vote_request_log_not_up_to_date() {
-    let timer_service = raft_test_utils::frozen_timer::FrozenTimer;
+    let timer_service = FrozenTimer;
     let mut manager = ElectionManager::<InMemoryNodeCollection, FrozenTimer>::new(timer_service);
 
-    let mut storage = raft_test_utils::in_memory_storage::InMemoryStorage::new();
-    storage.append_entries(&[raft_core::log_entry::LogEntry {
-        entry_type: raft_core::log_entry::EntryType::Command("cmd".to_string()),
+    let mut storage = InMemoryStorage::new();
+    storage.append_entries(&[LogEntry {
+        entry_type: EntryType::Command("cmd".to_string()),
         term: 2,
     }]);
 
     let msg = manager.handle_pre_vote_request::<
         String,
-        raft_test_utils::in_memory_log_entry_collection::InMemoryLogEntryCollection,
-        raft_test_utils::in_memory_chunk_collection::InMemoryChunkCollection,
-        raft_test_utils::in_memory_storage::InMemoryStorage,
-    >(1, 2, 1, 1, 1, &storage);
+        InMemoryLogEntryCollection,
+        InMemoryChunkCollection,
+        InMemoryStorage,
+    >(1, 1, 1, 1, &storage);
 
     match msg {
-        raft_core::raft_messages::RaftMsg::PreVoteResponse { term, vote_granted } => {
+        RaftMsg::PreVoteResponse { term, vote_granted } => {
             assert_eq!(term, 1);
-            assert!(!vote_granted); // Log not up to date: candidate has term 1, index 1; we have term 2, index 1
+            assert!(!vote_granted);
         }
         _ => panic!("Expected PreVoteResponse"),
     }
@@ -893,11 +890,10 @@ fn test_liveness_pre_vote_rejection_with_stale_term() {
 
     // PreVote request with stale term should be rejected
     let response = election.handle_pre_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
-        3,  // term (stale)
-        2,  // candidate_id
-        0,  // last_log_index
-        0,  // last_log_term
-        current_term,
+        3,
+                0,
+        0,
+              current_term,
         &storage,
     );
 
