@@ -11,21 +11,19 @@ use raft_validation::timeless_test_cluster::TimelessTestCluster;
 
 #[test]
 fn test_liveness_follower_far_behind() {
-    // Arrange - Leader has entries 1-5, follower has only 1-2
+    // Arrange
     let mut cluster = TimelessTestCluster::new();
     cluster.add_node(1);
     cluster.add_node(2);
     cluster.add_node(3);
     cluster.connect_peers();
 
-    // Node 1 becomes leader
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
 
-    // Leader writes 5 entries, all nodes receive them
     for i in 1..=5 {
         cluster
             .get_node_mut(1)
@@ -37,7 +35,6 @@ fn test_liveness_follower_far_behind() {
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 5);
     assert_eq!(cluster.get_node(3).storage().last_log_index(), 5);
 
-    // Simulate node 2 crashing and losing entries 3-5 (simulate incomplete write)
     let mut storage_node2 = InMemoryStorage::new();
     for i in 1..=2 {
         if let Some(entry) = cluster.get_node(1).storage().get_entry(i) {
@@ -49,13 +46,11 @@ fn test_liveness_follower_far_behind() {
     cluster.add_node_with_storage(2, storage_node2);
     cluster.connect_peers();
 
-    // Node 1 was reset to Follower by connect_peers re-creation. Force it to be Leader.
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
-    // Send a new command to commit entries from previous term
     cluster
         .get_node_mut(1)
         .on_event(Event::ClientCommand("noop".to_string()));
@@ -64,7 +59,7 @@ fn test_liveness_follower_far_behind() {
     assert_eq!(cluster.get_node(1).storage().last_log_index(), 6);
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 2);
 
-    // Leader sends heartbeats - follower should catch up
+    // Act
     for _ in 0..10 {
         cluster
             .get_node_mut(1)
@@ -76,7 +71,7 @@ fn test_liveness_follower_far_behind() {
         }
     }
 
-    // Node 2 should now have all 6 entries
+    // Assert
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 6);
 
     for i in 1..=5 {
@@ -86,7 +81,6 @@ fn test_liveness_follower_far_behind() {
         }
     }
 
-    // Verify commit and state machine
     assert_eq!(cluster.get_node(2).commit_index(), 6);
     assert_eq!(cluster.get_node(2).state_machine().get("x"), Some("5"));
 }

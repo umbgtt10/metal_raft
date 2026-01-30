@@ -31,7 +31,6 @@ impl StateMachine for InMemoryStateMachine {
     type SnapshotData = SimSnapshotData;
 
     fn apply(&mut self, payload: &Self::Payload) {
-        // Parse "SET key=value" commands
         if let Some(command) = payload.strip_prefix("SET ") {
             if let Some((key, value)) = command.split_once('=') {
                 self.data.insert(key.to_string(), value.to_string());
@@ -44,7 +43,6 @@ impl StateMachine for InMemoryStateMachine {
     }
 
     fn create_snapshot(&self) -> Self::SnapshotData {
-        // Serialize HashMap to JSON (simple and readable for testing)
         let vec = serde_json::to_vec(&self.data).unwrap_or_default();
         SimSnapshotData::from_vec(vec)
     }

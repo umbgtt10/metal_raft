@@ -30,6 +30,7 @@ fn test_safety_vote_rejection_already_voted() {
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
+    // Assert
     assert_eq!(*cluster.get_node(2).role(), NodeState::Leader);
     assert_eq!(cluster.get_node(2).current_term(), 2);
     assert_eq!(*cluster.get_node(1).role(), NodeState::Follower);

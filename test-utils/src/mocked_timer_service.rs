@@ -7,10 +7,9 @@ use raft_core::timer_service::{ExpiredTimers, TimerKind, TimerService};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Shared mock clock that can be advanced manually
 #[derive(Clone)]
 pub struct MockClock {
-    current_time: Rc<RefCell<u64>>, // milliseconds
+    current_time: Rc<RefCell<u64>>,
 }
 
 impl MockClock {
@@ -43,7 +42,6 @@ impl Clock for MockClock {
     }
 }
 
-/// Mock timer service with controllable time
 #[derive(Clone)]
 pub struct MockTimerService {
     election_deadline: Option<u64>,
@@ -74,23 +72,19 @@ impl MockTimerService {
         }
     }
 
-    /// Get deterministic "random" timeout
     fn random_election_timeout(&self) -> u64 {
         let range = self.election_timeout_max - self.election_timeout_min;
 
-        // If min == max, just return that value (no randomness needed)
         if range == 0 {
             return self.election_timeout_min;
         }
 
-        // Use a better mixing function for deterministic randomness
         let seed = self
             .clock
             .now_millis()
             .wrapping_mul(31)
             .wrapping_add(self.node_id.wrapping_mul(97));
 
-        // Mix the bits more
         let seed = seed ^ (seed >> 16);
         let seed = seed.wrapping_mul(0x85ebca6b);
         let seed = seed ^ (seed >> 13);

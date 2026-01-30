@@ -409,23 +409,21 @@ fn test_remove_majority_of_servers() {
 
 #[test]
 fn test_config_change_with_leader_crash() {
+    // Arrange
     let mut cluster = TimelessTestCluster::with_nodes(5);
 
-    // Elect node 1 as leader
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
-    // Initiate config change to add node 6
     cluster
         .get_node_mut(1)
         .on_event(Event::ConfigChange(ConfigurationChange::AddServer(6)));
 
-    // Leader sends the config change entry to followers
     cluster.deliver_messages();
 
-    // Send heartbeats to ensure full replication before crash
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
@@ -433,27 +431,23 @@ fn test_config_change_with_leader_crash() {
 
     let config_index = cluster.get_node(2).storage().last_log_index();
 
-    // Verify config change entry was replicated to at least one follower
+    // Assert
     assert!(
         config_index > 0,
         "Config change should be replicated to follower before leader crashes"
     );
 
-    // Save node 1's storage state before crash
+    // Act
     let saved_storage = cluster.get_node(1).storage().clone();
 
-    // Leader (node 1) crashes BEFORE the config change commits
     cluster.remove_node(1);
 
-    // Node 2 starts election
     cluster
         .get_node_mut(2)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
 
-    // May need multiple election rounds
     for _ in 0..3 {
-        // Check if we have a leader
         let has_leader = [2, 3, 4, 5]
             .iter()
             .any(|&node_id| *cluster.get_node(node_id).role() == NodeState::Leader);
@@ -469,14 +463,12 @@ fn test_config_change_with_leader_crash() {
         cluster.deliver_messages();
     }
 
-    // Find the new leader
     let new_leader = [2, 3, 4, 5]
         .iter()
         .find(|&&node_id| *cluster.get_node(node_id).role() == NodeState::Leader)
         .copied()
         .expect("Should have elected a new leader");
 
-    // New leader sends heartbeats to commit the config change
     for _ in 0..5 {
         cluster
             .get_node_mut(new_leader)
@@ -484,29 +476,30 @@ fn test_config_change_with_leader_crash() {
         cluster.deliver_messages();
     }
 
-    // New leader should have committed the config change
+    // Assert
     assert!(
         cluster.get_node(new_leader).is_committed(config_index),
         "New leader should commit the config change from crashed leader"
     );
 
-    // Verify config was applied
     assert_eq!(cluster.get_node(new_leader).config().size(), 6);
     assert!(cluster.get_node(new_leader).config().contains(6));
 
-    // Verify cluster can still make progress
+    // Act
     cluster
         .get_node_mut(new_leader)
         .on_event(Event::ClientCommand("after_crash".to_string()));
     cluster.deliver_messages();
 
     let final_index = cluster.get_node(new_leader).storage().last_log_index();
+
+    // Assert
     assert!(
         cluster.get_node(new_leader).is_committed(final_index),
         "Cluster should continue operating after leader crash during config change"
     );
 
-    // Recover node 1 and verify it catches up with new config
+    // Act
     cluster.add_node_with_storage(1, saved_storage);
     cluster.connect_peers();
 
@@ -517,7 +510,7 @@ fn test_config_change_with_leader_crash() {
         cluster.deliver_messages();
     }
 
-    // Node 1 should have caught up and have the new configuration
+    // Assert
     assert_eq!(
         cluster.get_node(1).config().size(),
         6,

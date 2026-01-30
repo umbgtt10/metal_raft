@@ -20,7 +20,6 @@ pub struct InMemoryStorage {
     current_term: Term,
     voted_for: Option<NodeId>,
     log: InMemoryLogEntryCollection,
-    // Snapshot support
     snapshot: Option<Snapshot<SimSnapshotData>>,
     pending_snapshot_data: Vec<u8>,
     first_index: LogIndex,
@@ -88,7 +87,7 @@ impl Storage for InMemoryStorage {
 
     fn get_entry(&self, index: LogIndex) -> Option<LogEntry<String>> {
         if index < self.first_index {
-            return None; // Entry is in snapshot
+            return None;
         }
 
         let adjusted_index = (index - self.first_index) as usize;
@@ -119,7 +118,6 @@ impl Storage for InMemoryStorage {
     }
 
     fn truncate_after(&mut self, index: LogIndex) {
-        // Convert 1-based log index to 0-based Vec index (adjusted by first_index)
         if index < self.first_index {
             self.log = InMemoryLogEntryCollection::new(&[]);
             return;
@@ -218,9 +216,7 @@ impl Storage for InMemoryStorage {
         let num_to_discard = (index - self.first_index) as usize;
 
         if num_to_discard >= self.log.len() {
-            // Discarding all entries
             self.log = InMemoryLogEntryCollection::new(&[]);
-            // New first index is the one we're discarding up to
             self.first_index = index;
         } else {
             let remaining = self.log.as_slice()[num_to_discard..].to_vec();

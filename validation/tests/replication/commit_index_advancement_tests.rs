@@ -14,23 +14,21 @@ fn test_liveness_commit_index_advancement() {
     cluster.add_node(3);
     cluster.connect_peers();
 
-    // Node 1 becomes leader
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Election));
     cluster.deliver_messages();
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
 
-    // Act - Client sends command
+    // Act
     cluster
         .get_node_mut(1)
         .on_event(Event::ClientCommand("SET x=1".to_string()));
     cluster.deliver_messages();
 
-    // Assert - Leader's commit_index advances to 1 (majority replicated)
+    // Assert
     assert_eq!(cluster.get_node(1).commit_index(), 1);
 
-    // Followers' commit_index also advances (from next AppendEntries/heartbeat)
     cluster
         .get_node_mut(1)
         .on_event(Event::TimerFired(TimerKind::Heartbeat));

@@ -2,8 +2,6 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-//! Null observer implementation for testing
-
 use raft_core::{
     collections::log_entry_collection::LogEntryCollection,
     observer::{EventLevel, Observer, Role, TimerKind},
@@ -13,7 +11,6 @@ use raft_core::{
 
 use crate::in_memory_chunk_collection::InMemoryChunkCollection;
 
-/// Null observer that does nothing (zero-cost default for tests)
 pub struct NullObserver<P, L>
 where
     P: Clone,
@@ -48,7 +45,6 @@ where
         EventLevel::None
     }
 
-    // All methods are no-ops and will be optimized away
     #[inline]
     fn leader_elected(&mut self, _: NodeId, _: Term) {}
     #[inline]

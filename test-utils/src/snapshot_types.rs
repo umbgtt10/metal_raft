@@ -2,13 +2,9 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-//! Snapshot types for sim - standard Vec-based implementation
-
 use crate::in_memory_chunk_collection::InMemoryChunkCollection;
 use raft_core::snapshot::{SnapshotBuildError, SnapshotBuilder, SnapshotData};
 
-/// Newtype wrapper around Vec<u8> for sim snapshots
-/// (Needed to satisfy orphan rules for trait implementation)
 #[derive(Clone, Debug, PartialEq)]
 pub struct SimSnapshotData(pub Vec<u8>);
 
@@ -55,7 +51,6 @@ impl SnapshotData for SimSnapshotData {
     }
 }
 
-/// Builder for sim - accumulates chunks into Vec
 pub struct SimSnapshotBuilder {
     data: Vec<u8>,
     expected_offset: usize,

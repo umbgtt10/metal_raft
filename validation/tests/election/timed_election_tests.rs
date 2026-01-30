@@ -62,9 +62,9 @@ fn test_liveness_leader_sends_heartbeats_automatically() {
 fn test_liveness_split_vote_then_recovery() {
     // Arrange
     let mut cluster = TimefullTestCluster::new();
-    cluster.add_node_with_timeouts(1, 100, 200); // 100-200ms
-    cluster.add_node_with_timeouts(2, 150, 250); // 150-250ms
-    cluster.add_node_with_timeouts(3, 200, 300); // 200-300ms
+    cluster.add_node_with_timeouts(1, 100, 200);
+    cluster.add_node_with_timeouts(2, 150, 250);
+    cluster.add_node_with_timeouts(3, 200, 300);
     cluster.connect_peers();
 
     let mut elected = false;

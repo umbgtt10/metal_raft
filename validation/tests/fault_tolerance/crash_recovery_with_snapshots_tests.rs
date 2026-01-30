@@ -8,7 +8,6 @@ use raft_core::{
 };
 use raft_validation::timeless_test_cluster::TimelessTestCluster;
 
-/// Test that a node restarts and restores state from snapshot
 #[test]
 fn test_node_restarts_and_restores_from_snapshot() {
     // Arrange
@@ -37,7 +36,7 @@ fn test_node_restarts_and_restores_from_snapshot() {
 
     // Assert
     let snapshot = cluster.get_node(1).storage().load_snapshot();
-    assert!(snapshot.is_some(), "Snapshot should exist");
+    assert!(snapshot.is_some());
     assert_eq!(snapshot.unwrap().metadata.last_included_index, 10);
     for i in 1..=10 {
         assert_eq!(
@@ -62,8 +61,7 @@ fn test_node_restarts_and_restores_from_snapshot() {
     for i in 1..=10 {
         assert_eq!(
             recovered_node.state_machine().get(&format!("key{}", i)),
-            Some(&format!("value{}", i)[..]),
-            "State machine should be restored from snapshot"
+            Some(&format!("value{}", i)[..])
         );
     }
 
@@ -71,10 +69,7 @@ fn test_node_restarts_and_restores_from_snapshot() {
     assert_eq!(recovered_node.current_term(), saved_term);
 
     let snapshot_after_restart = recovered_node.storage().load_snapshot();
-    assert!(
-        snapshot_after_restart.is_some(),
-        "Snapshot should persist across restart"
-    );
+    assert!(snapshot_after_restart.is_some());
     assert_eq!(
         snapshot_after_restart.unwrap().metadata.last_included_index,
         10
@@ -129,15 +124,15 @@ fn test_restart_with_snapshot_and_remaining_entries() {
         );
     }
 
-    assert_eq!(recovered_node.storage().first_log_index(), 11,);
-    assert_eq!(recovered_node.storage().last_log_index(), 15,);
+    assert_eq!(recovered_node.storage().first_log_index(), 11);
+    assert_eq!(recovered_node.storage().last_log_index(), 15);
 
     for i in 11..=15 {
         assert!(recovered_node.storage().get_entry(i).is_some());
     }
 
     for i in 1..=10 {
-        assert!(recovered_node.storage().get_entry(i).is_none(),);
+        assert!(recovered_node.storage().get_entry(i).is_none());
     }
 }
 
@@ -309,7 +304,7 @@ fn test_multiple_restart_cycles() {
                 .get_node(1)
                 .state_machine()
                 .get(&format!("cycle2_key{}", i)),
-            None,
+            None
         );
     }
 }

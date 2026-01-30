@@ -4,7 +4,6 @@
 
 use raft_core::collections::chunk_collection::{ChunkCollection, CollectionError};
 
-/// In-memory implementation of ChunkCollection using Vec<u8>
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InMemoryChunkCollection {
     data: Vec<u8>,
